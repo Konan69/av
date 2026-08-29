@@ -1,0 +1,245 @@
+:root {
+	color-scheme: dark;
+	--ink: #cdd3e0;
+	--dim: #5a647c;
+}
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+html,
+body,
+#root {
+	height: 100%;
+	background: #05060a;
+	overflow: hidden;
+	font: 12px/1.6 ui-monospace, "Cascadia Mono", monospace;
+	color: var(--ink);
+}
+canvas {
+	display: block;
+}
+button {
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+
+/* ── launcher ─────────────────────────────────────────────── */
+.shell {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 12vh 24px 40px;
+	gap: 28px;
+	overflow-y: auto;
+	background: radial-gradient(ellipse at 50% 0%, #0b1020 0%, #05060a 70%);
+	transition: background 0.2s;
+}
+.shell.over {
+	background: radial-gradient(ellipse at 50% 0%, #16224a 0%, #05060a 70%);
+}
+.shell header {
+	text-align: center;
+}
+.shell h1 {
+	font-size: 13px;
+	font-weight: 500;
+	letter-spacing: 0.55em;
+	color: #8fa3c8;
+}
+.shell header p {
+	color: var(--dim);
+	margin-top: 6px;
+}
+.err {
+	color: #e06a6a;
+	max-width: 60ch;
+	text-align: center;
+}
+
+.lists {
+	display: flex;
+	gap: 48px;
+	flex-wrap: wrap;
+	justify-content: center;
+	width: min(900px, 100%);
+}
+.lists section {
+	min-width: 300px;
+	flex: 1;
+}
+.lists h2 {
+	font-size: 10px;
+	font-weight: 400;
+	letter-spacing: 0.3em;
+	text-transform: uppercase;
+	color: #3c4560;
+	padding-bottom: 8px;
+	border-bottom: 1px solid #161c2e;
+}
+.lists ul {
+	list-style: none;
+}
+.lists li {
+	display: flex;
+	align-items: center;
+	border-bottom: 1px solid #0d1220;
+}
+.row {
+	flex: 1;
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 9px 4px;
+	text-align: left;
+	min-width: 0;
+}
+.row:hover {
+	background: #0d1424;
+}
+.nm {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.meta {
+	color: var(--dim);
+	flex: none;
+}
+.x {
+	color: #2f374d;
+	padding: 4px 8px;
+}
+.x:hover {
+	color: #e06a6a;
+}
+.pick {
+	color: var(--dim);
+	border: 1px solid #1b2338;
+	padding: 8px 18px;
+	border-radius: 2px;
+}
+.pick:hover {
+	color: var(--ink);
+	border-color: #2c3550;
+}
+
+/* ── analysis ─────────────────────────────────────────────── */
+.prog {
+	width: min(420px, 80%);
+	text-align: center;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.bar2 {
+	height: 2px;
+	background: #161c2e;
+	overflow: hidden;
+}
+.bar2 .fill {
+	height: 100%;
+	background: #6ea8ff;
+	transition: width 0.2s;
+}
+.bar2 .fill.pulse {
+	animation: sweep 1.6s ease-in-out infinite;
+}
+@keyframes sweep {
+	0%,
+	100% {
+		opacity: 0.25;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+.prog .dim {
+	color: var(--dim);
+}
+
+/* ── in-world ─────────────────────────────────────────────── */
+.hud {
+	position: fixed;
+	top: 16px;
+	left: 20px;
+	z-index: 5;
+	text-shadow: 0 1px 8px #000;
+	pointer-events: none;
+}
+.hud .label {
+	font-size: 17px;
+	letter-spacing: 0.3em;
+	text-transform: uppercase;
+}
+.hud .sub {
+	color: #7a86a4;
+	margin-top: 2px;
+}
+.cast {
+	margin-top: 12px;
+	display: grid;
+	gap: 3px;
+}
+.voice {
+	display: grid;
+	grid-template-columns: 62px 54px 70px;
+	align-items: center;
+	gap: 8px;
+	font-size: 10px;
+	color: #6b7794;
+}
+.voice .role {
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	color: #8fa3c8;
+}
+.voice .lvl {
+	height: 2px;
+	background: #1a2237;
+	display: block;
+}
+.voice .lvl i {
+	display: block;
+	height: 100%;
+	background: #9fc0ff;
+}
+
+.bar {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 30px;
+	z-index: 5;
+	cursor: pointer;
+}
+.bar .track {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 7px;
+	opacity: 0.85;
+}
+.bar .head {
+	position: absolute;
+	top: 14px;
+	bottom: 0;
+	width: 2px;
+	background: #fff;
+	box-shadow: 0 0 10px #fff;
+}
+.bar .name {
+	position: absolute;
+	right: 16px;
+	bottom: 12px;
+	color: #55607a;
+	font-size: 10px;
+}
