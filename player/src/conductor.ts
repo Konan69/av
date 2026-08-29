@@ -139,8 +139,17 @@ export class Conductor {
 		// every section boundary snaps to the first downbeat at/after it, so a
 		// morph completes ON the bar rather than near it
 		this.snapped = this.sections.map((s) => {
-			const d = this.downbeats.find((x) => x >= s.start - 0.12);
-			return d ?? s.start;
+			let best = s.start;
+			let bestD = Infinity;
+			for (const d of this.downbeats) {
+				const gap = Math.abs(d - s.start);
+				if (gap < bestD) {
+					bestD = gap;
+					best = d;
+				}
+				if (d > s.start + 4) break;
+			}
+			return best;
 		});
 
 		this.rmsScale = 1 / percentile(g.waveform.rms, 0.95);
@@ -245,18 +254,28 @@ export class Conductor {
 		// rho (the regime knob) rides the tension curve: the attractor changes
 		// character because the MUSIC changed character. Integration speed
 		// follows loudness, so a breakdown genuinely slows the world down.
+		//
+		// Explicit Euler on Lorenz diverges fast at these sigma/rho values, and
+		// one NaN here poisons the camera and every vertex downstream (a black
+		// screen, silently). So: fixed small substeps, bounded substep count,
+		// magnitude clamp, and a hard reseed if it ever leaves the reals.
 		const rho = 16 + 26 * tension;
-		const flow = dt * (0.15 + 1.6 * rms) * 3.2;
-		const steps = 3;
-		const h = Math.min(0.02, flow / steps);
+		const flow = Math.min(0.2, dt * (0.15 + 1.6 * rms) * 2.2);
+		const H = 0.004;
+		const steps = Math.max(1, Math.min(64, Math.ceil(flow / H)));
+		const h = flow / steps;
 		for (let k = 0; k < steps; k++) {
-			const [x, y, z] = this.lz;
+			const x = this.lz[0];
+			const y = this.lz[1];
+			const z = this.lz[2];
 			this.lz[0] = x + h * (this.seed.sigma * (y - x));
 			this.lz[1] = y + h * (x * (rho - z) - y);
 			this.lz[2] = z + h * (x * y - this.seed.beta * z);
 		}
 		const pulseIdx = this.voices.findIndex((v) => v.role === "pulse");
-		if (pulseIdx >= 0) this.lz[0] += this.punch[pulseIdx] * 0.9 * Math.min(1, dt * 60);
+		if (pulseIdx >= 0) this.lz[0] += this.punch[pulseIdx] * 0.6 * Math.min(1, dt * 60);
+		const mag = Math.abs(this.lz[0]) + Math.abs(this.lz[1]) + Math.abs(this.lz[2]);
+		if (!Number.isFinite(mag) || mag > 400) this.lz.set([0.9, 0.4, 12]);
 		this.chaos[0] = Math.max(-1.5, Math.min(1.5, this.lz[0] / 18));
 		this.chaos[1] = Math.max(-1.5, Math.min(1.5, this.lz[1] / 22));
 		this.chaos[2] = Math.max(-1.5, Math.min(1.5, (this.lz[2] - rho) / 22));

@@ -63,3 +63,6 @@ python scripts/analyze.py "/path/to/track.m4a" \
 - [x] The web player: drop one audio file, it hashes, analyzes (once ever,
       cached both server- and browser-side) and plays the world
 - [ ] Tempo octave disambiguation (Rust onset autocorr cross-check)
+- [ ] Feed demucs the STEREO decode. The Rust engine currently emits a mono
+      44.1k wav and the separator is fed that duplicated to two channels, so
+      it works without stereo cues — separation quality is left on the table.
