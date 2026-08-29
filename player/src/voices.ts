@@ -36,7 +36,7 @@ export interface Voice {
 	features: StemFeatures;
 }
 
-const PRESENCE_FLOOR = 0.02; // below 2% of total energy the stem is silence
+const PRESENCE_FLOOR = 0.05; // below 5% of total energy the stem is not a voice
 
 function percentile(xs: number[], p: number): number {
 	if (!xs.length) return 1;
@@ -102,11 +102,13 @@ export function discoverVoices(g: Genome): Voice[] {
 		}
 	};
 
-	// order matters: the body first, then what hits, then what shimmers
-	claim("pulse", (r) => r.lowRatio * 2 + r.share);
-	claim("strike", (r) => (r.onsetRate / maxOnsetRate) * 2 + r.share);
-	claim("filament", (r) => r.brightness / maxBright + r.share * 0.5);
-	claim("field", (r) => r.share + (1 - r.onsetRate / maxOnsetRate));
+	// order matters: the body first, then what hits, then what shimmers.
+	// Every score is WEIGHTED BY SHARE — a barely-present stem must not win a
+	// role on a ratio alone (a near-silent piano was taking "field").
+	claim("pulse", (r) => r.share * (0.4 + r.lowRatio * 2));
+	claim("strike", (r) => r.share * (0.3 + (r.onsetRate / maxOnsetRate) * 2));
+	claim("filament", (r) => r.share * (0.3 + r.brightness / maxBright));
+	claim("field", (r) => r.share * (0.5 + (1 - r.onsetRate / maxOnsetRate)));
 
 	void energy_frame_rate;
 	return present.map((r) => ({

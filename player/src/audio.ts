@@ -69,4 +69,12 @@ export class Transport {
 	async toggle() {
 		this.playing ? this.pause() : await this.play();
 	}
+
+	/** Stop for good and release the AudioContext. A Transport owns its own
+	 *  context, so an abandoned one keeps playing forever unless disposed. */
+	dispose() {
+		this.pause();
+		this.buffer = null;
+		void this.ctx.close().catch(() => {});
+	}
 }

@@ -1,31 +1,20 @@
 /**
- * Colour is the TRACK's, not the app's. The base hue comes from the genome
- * hash, so every track owns a colour identity; sections shift within it, and
- * because the shift is blended by PROBABILITY, an ambiguous passage literally
- * wavers between two colours instead of snapping.
+ * MONOCHROME + ONE ACCENT.
+ *
+ * Structure is white on black. Exactly one accent colour, derived from the
+ * track hash, carries the "live" elements — impacts, the axis, the playhead.
+ * Sections do NOT change hue: they change brightness, density and structure.
+ * Colour stays scarce so the geometry can read. (Six competing hues is what
+ * made the previous build unreadable.)
  */
 import type { WorldSeed } from "./seed";
 
 export type Rgb = [number, number, number];
 
-interface Profile {
-	shift: number; // hue rotation from the track's base hue
-	sat: number;
-	val: number;
-}
-
-const PROFILES: Record<string, Profile> = {
-	intro: { shift: -0.03, sat: 0.6, val: 0.5 },
-	buildup: { shift: 0.08, sat: 0.85, val: 0.8 },
-	drop: { shift: 0, sat: 0.95, val: 1 }, // + seed.accentShift, applied below
-	breakdown: { shift: -0.14, sat: 0.5, val: 0.55 },
-	outro: { shift: -0.07, sat: 0.45, val: 0.4 },
-	silence: { shift: 0, sat: 0.1, val: 0.12 },
-};
-
-function hsv(h: number, s: number, v: number): Rgb {
-	const i = Math.floor(((h % 1) + 1) % 1 * 6);
-	const f = ((h % 1) + 1) % 1 * 6 - i;
+export function hsv(h: number, s: number, v: number): Rgb {
+	const hh = (((h % 1) + 1) % 1) * 6;
+	const i = Math.floor(hh);
+	const f = hh - i;
 	const p = v * (1 - s);
 	const q = v * (1 - f * s);
 	const t = v * (1 - (1 - f) * s);
@@ -45,39 +34,43 @@ function hsv(h: number, s: number, v: number): Rgb {
 	}
 }
 
-export interface Palette {
-	body: Rgb;
+/** how "lit" each section is — brightness and density, never hue */
+const WEIGHT: Record<string, { ink: number; accent: number }> = {
+	intro: { ink: 0.55, accent: 0.15 },
+	buildup: { ink: 0.8, accent: 0.45 },
+	drop: { ink: 1, accent: 1 },
+	breakdown: { ink: 0.6, accent: 0.2 },
+	outro: { ink: 0.4, accent: 0.1 },
+	silence: { ink: 0.18, accent: 0.02 },
+};
+
+export interface Ink {
+	/** structure brightness 0..1 */
+	ink: number;
+	/** how much accent this passage earns 0..1 */
+	accentAmount: number;
 	accent: Rgb;
-	haze: Rgb;
 }
 
-/** probability-weighted palette for this instant */
-export function palette(seed: WorldSeed, labels: string[], probs: number[]): Palette {
-	const body: Rgb = [0, 0, 0];
-	const accent: Rgb = [0, 0, 0];
-	let sat = 0;
-	let val = 0;
-	labels.forEach((label, i) => {
-		const p = probs[i] ?? 0;
+export function ink(seed: WorldSeed, labels: string[], probs: number[], ambiguity: number): Ink {
+	let i = 0;
+	let a = 0;
+	let total = 0;
+	labels.forEach((label, k) => {
+		const p = probs[k] ?? 0;
 		if (p <= 0) return;
-		const prof = PROFILES[label] ?? PROFILES.silence;
-		const shift = prof.shift + (label === "drop" ? seed.accentShift * 0.5 : 0);
-		const c = hsv(seed.hue + shift, prof.sat, prof.val);
-		const a = hsv(seed.hue + shift + seed.accentShift, Math.min(1, prof.sat * 0.9), prof.val);
-		for (let k = 0; k < 3; k++) {
-			body[k] += c[k] * p;
-			accent[k] += a[k] * p;
-		}
-		sat += prof.sat * p;
-		val += prof.val * p;
+		const w = WEIGHT[label] ?? WEIGHT.silence;
+		i += w.ink * p;
+		a += w.accent * p;
+		total += p;
 	});
-	const haze = hsv(seed.hue - 0.02, Math.min(1, sat * 0.7), val * 0.12);
-	return { body, accent, haze };
-}
-
-/** stable per-track colour for a voice, spread around the accent wheel */
-export function voiceColor(seed: WorldSeed, index: number, count: number): Rgb {
-	return hsv(seed.hue + seed.accentShift * (index / Math.max(1, count - 1)) * 1.6, 0.8, 1);
+	if (total > 0.001) {
+		i /= total;
+		a /= total;
+	}
+	// on an ambiguous passage the accent drifts toward its complement, so a
+	// tease drop reads as a colour that cannot decide
+	return { ink: i, accentAmount: a, accent: hsv(seed.hue + ambiguity * seed.accentShift, 0.95, 1) };
 }
 
 export function cssColor([r, g, b]: Rgb, alpha = 1): string {

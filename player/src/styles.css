@@ -165,6 +165,23 @@ button {
 }
 
 /* ── in-world ─────────────────────────────────────────────── */
+.seek {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 52px;
+	z-index: 6;
+	cursor: col-resize;
+}
+
+.overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 5;
+	pointer-events: none;
+}
+
 .hud {
 	position: fixed;
 	top: 16px;

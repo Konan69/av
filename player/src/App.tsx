@@ -1,12 +1,12 @@
 import { Canvas } from "@react-three/fiber";
 import { Leva } from "leva";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { analyzeBlob, fetchFolderTrack, listFolder, type Stage } from "./analyzer";
 import { Transport } from "./audio";
 import { Conductor } from "./conductor";
 import type { Genome } from "./genome";
 import { deleteTrack, getTrack, listTracks, type TrackMeta } from "./library";
-import { cssColor, palette } from "./palette";
+import { Overlay } from "./Overlay";
 import { seedFromSha, type WorldSeed } from "./seed";
 import { World } from "./World";
 
@@ -28,6 +28,10 @@ export default function App() {
 	const [lib, setLib] = useState<TrackMeta[]>([]);
 	const [folder, setFolder] = useState<{ name: string; size: number }[]>([]);
 	const pickRef = useRef<HTMLInputElement>(null);
+	// exactly one Transport may be alive at a time: each owns an AudioContext,
+	// so an abandoned one keeps playing over the new track forever.
+	const liveRef = useRef<Live | null>(null);
+	const startingRef = useRef(false);
 
 	const refresh = useCallback(() => {
 		void listTracks().then(setLib);
@@ -35,8 +39,19 @@ export default function App() {
 	}, []);
 	useEffect(refresh, [refresh]);
 
+	const stopCurrent = useCallback(() => {
+		liveRef.current?.transport.dispose();
+		liveRef.current = null;
+		setLive(null);
+	}, []);
+
 	const start = useCallback(
 		async (blob: Blob, name: string) => {
+			// a second click while the first is still resolving used to spawn a
+			// second player on top of the first
+			if (startingRef.current) return;
+			startingRef.current = true;
+			stopCurrent();
 			setErr("");
 			try {
 				const rec = await analyzeBlob(blob, name, setStage);
@@ -44,16 +59,20 @@ export default function App() {
 				await transport.load(rec.audio);
 				const seed = seedFromSha(rec.sha);
 				const conductor = new Conductor(rec.genome, seed);
+				const next: Live = { genome: rec.genome, conductor, transport, seed, name: rec.name };
 				setStage(null);
-				setLive({ genome: rec.genome, conductor, transport, seed, name: rec.name });
+				liveRef.current = next;
+				setLive(next);
 				void transport.play();
 				refresh();
 			} catch (e) {
 				setStage(null);
 				setErr(e instanceof Error ? e.message : String(e));
+			} finally {
+				startingRef.current = false;
 			}
 		},
-		[refresh],
+		[refresh, stopCurrent],
 	);
 
 	const openLibrary = useCallback(
@@ -95,14 +114,13 @@ export default function App() {
 				void live.transport.toggle();
 			}
 			if (e.code === "Escape") {
-				live.transport.pause();
-				setLive(null);
+				stopCurrent();
 				refresh();
 			}
 		};
 		addEventListener("keydown", onKey);
 		return () => removeEventListener("keydown", onKey);
-	}, [live, refresh]);
+	}, [live, refresh, stopCurrent]);
 
 	if (live)
 		return (
@@ -118,8 +136,16 @@ export default function App() {
 				>
 					<World live={live} />
 				</Canvas>
-				<Hud live={live} />
-				<Timeline live={live} />
+				<Overlay live={live} />
+				{/* the readout is pointer-transparent; this strip carries the scrub */}
+				<div
+					className="seek"
+					onClick={(e) => {
+						const M = 26;
+						const f = (e.clientX - M) / Math.max(1, innerWidth - 2 * M);
+						void live.transport.seek(Math.max(0, Math.min(1, f)) * live.transport.duration);
+					}}
+				/>
 			</>
 		);
 
@@ -142,7 +168,12 @@ export default function App() {
 								<ul>
 									{lib.map((t) => (
 										<li key={t.sha}>
-											<button type="button" className="row" onClick={() => void openLibrary(t.sha)}>
+											<button
+												type="button"
+												className="row"
+												disabled={stage !== null}
+												onClick={() => void openLibrary(t.sha)}
+											>
 												<span className="nm">{t.name}</span>
 												<span className="meta">
 													{fmt(t.duration)} · {t.bpm ?? "?"} bpm
@@ -170,6 +201,7 @@ export default function App() {
 											<button
 												type="button"
 												className="row"
+												disabled={stage !== null}
 												onClick={() => void fetchFolderTrack(f.name).then((b) => start(b, f.name))}
 											>
 												<span className="nm">{f.name}</span>
@@ -220,71 +252,6 @@ function Progress({ stage }: { stage: Stage }) {
 			</div>
 			<p>{text}</p>
 			{stage.kind === "listening" && <p className="dim">first time for this track only — 1 to 3 minutes on a GPU</p>}
-		</div>
-	);
-}
-
-function Hud({ live }: { live: Live }) {
-	const [, tick] = useState(0);
-	useEffect(() => {
-		const id = setInterval(() => tick((n) => n + 1), 100);
-		return () => clearInterval(id);
-	}, []);
-	// READ the frame the render loop produced. sample() advances integrators
-	// and consumes onsets, so only the useFrame loop may ever call it.
-	const s = live.conductor.last;
-	const t = live.transport.time;
-	if (!s) return null;
-	const bar = live.conductor.downbeats.filter((d) => d <= t).length;
-	return (
-		<div className="hud">
-			<div className="label">{s.section.label}</div>
-			<div className="sub">
-				{fmt(t)}.{Math.floor((t % 1) * 10)} · {live.genome.beats.bpm ?? "?"} bpm · bar {Math.max(1, bar)}
-				{s.morph > 0.01 ? ` · → ${s.nextLabel} ${(s.morph * 100).toFixed(0)}%` : ""}
-				{s.ambiguity > 0.3 ? " · undecided" : ""}
-			</div>
-			<div className="cast">
-				{s.voices.map((v) => (
-					<div className="voice" key={v.stem}>
-						<span className="role">{v.role}</span>
-						<span className="stem">{v.stem}</span>
-						<span className="lvl">
-							<i style={{ width: `${Math.min(100, v.level * 70 + v.punch * 40)}%` }} />
-						</span>
-					</div>
-				))}
-			</div>
-		</div>
-	);
-}
-
-function Timeline({ live }: { live: Live }) {
-	const [pct, setPct] = useState(0);
-	const gradient = useMemo(() => {
-		const dur = live.genome.duration;
-		const labels = live.genome.sections.labels;
-		const stops = live.conductor.sections.flatMap((sec) => {
-			const probs = labels.map((l) => (l === sec.label ? 1 : 0));
-			const c = cssColor(palette(live.seed, labels, probs).body, 0.95);
-			return [`${c} ${(sec.start / dur) * 100}%`, `${c} ${(sec.end / dur) * 100}%`];
-		});
-		return `linear-gradient(to right, ${stops.join(", ")})`;
-	}, [live]);
-
-	useEffect(() => {
-		const id = setInterval(() => setPct((live.transport.time / (live.transport.duration || 1)) * 100), 100);
-		return () => clearInterval(id);
-	}, [live]);
-
-	return (
-		<div
-			className="bar"
-			onClick={(e) => void live.transport.seek((e.clientX / innerWidth) * live.transport.duration)}
-		>
-			<div className="track" style={{ background: gradient }} />
-			<div className="head" style={{ left: `${pct}%` }} />
-			<div className="name">{live.name}</div>
 		</div>
 	);
 }
