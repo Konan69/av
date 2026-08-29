@@ -129,7 +129,7 @@ export default function App() {
 				<Canvas
 					gl={{ antialias: false, powerPreference: "high-performance" }}
 					dpr={[1, 1.75]}
-					camera={{ position: [0, 2.3, 9], fov: 60, near: 0.1, far: 260 }}
+					camera={{ position: [0, 7, 16], fov: 55, near: 0.1, far: 300 }}
 					onPointerDown={() => {
 						if (!live.transport.playing) void live.transport.play();
 					}}
