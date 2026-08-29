@@ -1,6 +1,7 @@
 /** Write every shader to disk with three.js's prelude so glslangValidator can
  *  compile them. Catches GLSL errors that would otherwise be a black screen. */
 import { mkdirSync, writeFileSync } from "node:fs";
+import { prismFrag, prismVert } from "./scenes/prism.frag";
 import { floorFrag, floorVert, inkFrag, occluderFrag, shellFrag, shellVert, vesselVert } from "./shaders";
 
 const VERT_PRELUDE = `#version 100
@@ -33,6 +34,8 @@ const files: [string, string][] = [
 	["shell.frag", FRAG_PRELUDE + "varying float vGlow;\n" + shellFrag.replace("varying float vGlow;", "")],
 	["floor.frag", FRAG_PRELUDE + floorFrag],
 	["occluder.frag", FRAG_PRELUDE + occluderFrag],
+	["prism.vert", VERT_PRELUDE + prismVert],
+	["prism.frag", FRAG_PRELUDE + prismFrag.replace("precision highp float;", "")],
 ];
 for (const [name, src] of files) writeFileSync(`${out}/${name}`, src);
 console.log(files.map(([n]) => n).join(" "));

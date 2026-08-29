@@ -33,6 +33,8 @@ export interface VoiceSignal {
 export interface Signals {
 	time: number;
 	section: Section;
+	/** index into conductor.sections — scenes key their choices off this */
+	sectionIndex: number;
 	probs: number[];
 	boundary: number;
 	/** 0..1 ramp that COMPLETES on the next boundary's downbeat */
@@ -283,6 +285,7 @@ export class Conductor {
 		this.last = {
 			time: t,
 			section,
+			sectionIndex: secIdx,
 			probs,
 			boundary: sampleLerp(g.sections.boundary, g.sections.frame_rate, t),
 			morph,
