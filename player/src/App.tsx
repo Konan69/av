@@ -106,6 +106,23 @@ export default function App() {
 		};
 	}, [start]);
 
+	// dev-only handle so a headless browser can park the transport at an exact
+	// timestamp while the look is being worked on
+	useEffect(() => {
+		if (!live || !import.meta.env.DEV) return;
+		(window as unknown as { __player?: unknown }).__player = {
+			seek: (t: number) => void live.transport.seek(t),
+			play: () => void live.transport.play(),
+			pause: () => live.transport.pause(),
+			get time() {
+				return live.transport.time;
+			},
+			get duration() {
+				return live.transport.duration;
+			},
+		};
+	}, [live]);
+
 	useEffect(() => {
 		if (!live) return;
 		const onKey = (e: KeyboardEvent) => {

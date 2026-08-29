@@ -14,8 +14,8 @@ import * as THREE from "three";
 import type { Live } from "./App";
 import { KaleidoscopeEffect } from "./kaleido";
 import { ink } from "./palette";
-import { buildScenes, pickScene } from "./scenes";
-import type { Ctx } from "./scenes/types";
+import { buildLayout } from "./bars";
+import { makeJourney } from "./scenes/journey";
 import { FLOOR_R, floorFrag, floorVert, N_RIP } from "./shaders";
 
 const GRID = 44;
@@ -49,7 +49,12 @@ export function World({ live }: { live: Live }) {
 		glow: { value: 1, min: 0, max: 3, step: 0.05 },
 	});
 
-	const scenes = useMemo(() => buildScenes(seed, conductor), [seed, conductor]);
+	// ONE world. The track is laid out in space and the camera flies through it,
+	// so section changes arrive as travel instead of as a cut.
+	const journey = useMemo(
+		() => makeJourney(buildLayout(genome, seed, conductor.sections)),
+		[genome, seed, conductor],
+	);
 	const floor = useMemo(() => {
 		const mat = new THREE.ShaderMaterial({
 			vertexShader: floorVert,
@@ -72,34 +77,21 @@ export function World({ live }: { live: Live }) {
 		return { obj, mat };
 	}, []);
 
+	const floorRef = useRef<THREE.Group>(null);
 	const kaleido = useMemo(() => new KaleidoscopeEffect(), []);
 	const caOffset = useMemo(() => new THREE.Vector2(0.0004, 0.0002), []);
 
 	// the group every scene is mounted into
 	const stage = useMemo(() => new THREE.Group(), []);
 	useEffect(() => {
-		for (const sc of Object.values(scenes)) stage.add(sc.object);
+		stage.add(journey.object);
 		return () => {
-			for (const sc of Object.values(scenes)) {
-				stage.remove(sc.object);
-				sc.dispose();
-			}
+			stage.remove(journey.object);
+			journey.dispose();
 		};
-	}, [scenes, stage]);
+	}, [journey, stage]);
 
-	const st = useRef({
-		poolPhase: 0,
-		kAngle: 0,
-		curr: "VESSEL",
-		next: "VESSEL",
-		lastSec: -1,
-		pos: new THREE.Vector3(0, 2.7, 13),
-		look: new THREE.Vector3(0, 2.2, 0),
-		posA: new THREE.Vector3(),
-		posB: new THREE.Vector3(),
-		lookA: new THREE.Vector3(),
-		lookB: new THREE.Vector3(),
-	}).current;
+	const st = useRef({ poolPhase: 0, kAngle: 0 }).current;
 
 	useFrame((state, rawDt) => {
 		const dt = Math.min(0.1, rawDt);
@@ -107,40 +99,16 @@ export function World({ live }: { live: Live }) {
 		const cam = state.camera as THREE.PerspectiveCamera;
 		const pal = ink(seed, genome.sections.labels, s.probs, s.ambiguity);
 
-		// which scene is this section, and which is coming
-		if (s.sectionIndex !== st.lastSec) {
-			st.lastSec = s.sectionIndex;
-			st.curr = pickScene(seed, s.section.label, s.sectionIndex);
-		}
-		const nextIdx = s.sectionIndex + 1;
-		const nextLabel = conductor.sections[nextIdx]?.label ?? s.section.label;
-		st.next = pickScene(seed, nextLabel, nextIdx);
-		// crossfade over the LAST HALF of the 4-bar approach: two bars
-		const xf = st.next === st.curr ? 0 : Math.max(0, Math.min(1, (s.morph - 0.5) * 2));
-
 		const voice = (role: string) => s.voices.find((v) => v.role === role) ?? s.voices[0];
-		const base: Omit<Ctx, "weight"> = { dt, s, ink: pal, seed, camera: cam, ctl, voice };
+		const ctx = { dt, s, ink: pal, seed, camera: cam, ctl, voice, weight: 1 };
+		journey.update(ctx);
 
-		for (const [name, sc] of Object.entries(scenes)) {
-			const weight = name === st.curr ? 1 - xf : name === st.next ? xf : 0;
-			sc.object.visible = weight > 0.002;
-			if (!sc.object.visible) continue;
-			sc.update({ ...base, weight });
-		}
-
-		// camera: lerp between what the outgoing and incoming scenes want
-		const a = scenes[st.curr].camera({ ...base, weight: 1 - xf });
-		const b = scenes[st.next].camera({ ...base, weight: xf });
-		st.posA.set(a.pos[0], a.pos[1], a.pos[2]);
-		st.posB.set(b.pos[0], b.pos[1], b.pos[2]);
-		st.lookA.set(a.look[0], a.look[1], a.look[2]);
-		st.lookB.set(b.look[0], b.look[1], b.look[2]);
-		st.pos.lerpVectors(st.posA, st.posB, xf);
-		st.look.lerpVectors(st.lookA, st.lookB, xf);
-		cam.position.copy(st.pos);
-		cam.lookAt(st.look);
-		cam.rotateZ(0.1 * s.morph * s.morph * seed.spin);
-		cam.fov = a.fov * (1 - xf) + b.fov * xf;
+		const c = journey.camera(ctx);
+		cam.position.set(c.pos[0], c.pos[1], c.pos[2]);
+		cam.lookAt(c.look[0], c.look[1], c.look[2]);
+		// a slow bank, driven by the attractor and the approach to a boundary
+		cam.rotateZ((0.10 * s.chaos[1] + 0.16 * s.morph * s.morph) * seed.spin);
+		cam.fov = c.fov;
 		cam.updateProjectionMatrix();
 
 		// ── shared floor: the cymatic plate, present in every scene ────────
@@ -150,10 +118,12 @@ export function World({ live }: { live: Live }) {
 			const v = s.voices[i];
 			fv[i] = v ? v.level * (v.role === "pulse" ? ctl.bass : 1) : 0;
 		}
+		// the plate travels with us, a few bars ahead, so it never runs out
+		if (floorRef.current) floorRef.current.position.set(0, -9, cam.position.z - 40);
 		st.poolPhase += dt * (0.15 + 1.2 * s.rms);
 		fu.uPhase.value = st.poolPhase;
 		fu.uAmp.value = 0.45 + 0.55 * s.tension;
-		fu.uInk.value = pal.ink * (st.curr === "PRISM" ? 0.35 : 1);
+		fu.uInk.value = pal.ink * 0.1; // the plate is a floor, not a feature
 		fu.uAccentAmount.value = pal.accentAmount;
 		fu.uAccent.value.setRGB(pal.accent[0], pal.accent[1], pal.accent[2]);
 		const rips = conductor.recentOnsets("pulse", s.time, N_RIP);
@@ -166,12 +136,15 @@ export function World({ live }: { live: Live }) {
 
 		if (scene.fog instanceof THREE.FogExp2) {
 			scene.fog.color.setRGB(0, 0, 0);
-			scene.fog.density = 0.03 - 0.012 * s.drive;
+			// the corridor is ~400 units deep: 0.03 fogged everything to black.
+			// This gives depth falloff across the visible run instead.
+			scene.fog.density = 0.0042 - 0.0012 * s.drive;
 		}
 
 		st.kAngle += dt * (0.03 + 0.18 * s.tension);
 		// the screen-space fold only lifts where the geometry is not already folded
-		const kAmt = st.curr === "PRISM" ? 0.05 : 0.5 * s.drive + 0.35 * s.morph * s.morph;
+		// the geometry is already folded; the screen-space fold only tops it off
+		const kAmt = 0.22 * s.drive + 0.18 * s.morph * s.morph;
 		kaleido.set(seed.folds[Math.abs(s.sectionIndex) % seed.folds.length], st.kAngle + s.chaos[2] * 0.15, Math.min(0.85, ctl.kaleido * kAmt));
 
 		const strike = voice("strike");
@@ -182,11 +155,9 @@ export function World({ live }: { live: Live }) {
 	return (
 		<>
 			<color attach="background" args={[0, 0, 0]} />
-			<fogExp2 attach="fog" args={[0x000000, 0.03]} />
+			<fogExp2 attach="fog" args={[0x000000, 0.0042]} />
 			<primitive object={stage} />
-			<group rotation-x={-Math.PI / 2}>
-				<primitive object={floor.obj} />
-			</group>
+
 			<EffectComposer multisampling={4}>
 				<primitive object={kaleido} dispose={null} />
 				<Bloom intensity={0.32 * ctl.glow} luminanceThreshold={0.55} luminanceSmoothing={0.2} mipmapBlur />
