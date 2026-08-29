@@ -230,8 +230,11 @@ function Hud({ live }: { live: Live }) {
 		const id = setInterval(() => tick((n) => n + 1), 100);
 		return () => clearInterval(id);
 	}, []);
-	const s = live.conductor.sample(live.transport.time);
+	// READ the frame the render loop produced. sample() advances integrators
+	// and consumes onsets, so only the useFrame loop may ever call it.
+	const s = live.conductor.last;
 	const t = live.transport.time;
+	if (!s) return null;
 	const bar = live.conductor.downbeats.filter((d) => d <= t).length;
 	return (
 		<div className="hud">

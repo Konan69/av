@@ -59,6 +59,10 @@ image = (
         "muq @ git+https://github.com/tencent-ailab/MuQ.git",
         "beat_this @ git+https://github.com/CPJKU/beat_this",
         "demucs==4.0.1",
+        # MuQ passes an EasyDict as the model config; transformers >=4.50's
+        # masking_utils expects a real PretrainedConfig (._attn_implementation).
+        # Adding demucs floated this dep, so it is pinned explicitly.
+        "transformers==4.44.2",
         "soundfile",
         "fastapi[standard]",
         "python-multipart",

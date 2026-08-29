@@ -108,6 +108,9 @@ export class Conductor {
 
 	private punch: Float32Array;
 	private onsetPtr: number[];
+	private onsetTimes: number[][];
+	/** last frame the render loop computed — read-only consumers use this */
+	last: Signals | null = null;
 	private wobPhase = 0;
 	private lastT = 0;
 	private lz = new Float32Array([0.9, 0.4, 12]);
@@ -145,6 +148,7 @@ export class Conductor {
 
 		this.punch = new Float32Array(this.voices.length);
 		this.onsetPtr = this.voices.map(() => 0);
+		this.onsetTimes = this.voices.map((v) => v.features.onsets.map((o) => o.t));
 		this.sig = this.voices.map((v) => ({
 			stem: v.stem,
 			role: v.role,
@@ -156,17 +160,15 @@ export class Conductor {
 		}));
 	}
 
-	/** recent onsets of one role, for ripples on the floor */
+	/** recent onsets of one role, for ripples on the floor. Allocation-free
+	 *  lookup: the per-voice time arrays are built once in the constructor. */
 	recentOnsets(role: string, t: number, n = 12): { age: number; strength: number }[] {
-		const v = this.voices.find((x) => x.role === role) ?? this.voices[0];
-		const os = v.features.onsets;
-		let last = lowerBound(
-			os.map((o) => o.t),
-			t,
-		);
+		let vi = this.voices.findIndex((x) => x.role === role);
+		if (vi < 0) vi = 0;
+		const os = this.voices[vi].features.onsets;
+		const last = lowerBound(this.onsetTimes[vi], t);
 		const out: { age: number; strength: number }[] = [];
 		for (let i = last; i >= 0 && out.length < n; i--) out.push({ age: t - os[i].t, strength: os[i].strength });
-		last = 0;
 		return out;
 	}
 
@@ -259,7 +261,7 @@ export class Conductor {
 		this.chaos[1] = Math.max(-1.5, Math.min(1.5, this.lz[1] / 22));
 		this.chaos[2] = Math.max(-1.5, Math.min(1.5, (this.lz[2] - rho) / 22));
 
-		return {
+		this.last = {
 			time: t,
 			section,
 			probs,
@@ -282,5 +284,6 @@ export class Conductor {
 			chaos: this.chaos,
 			voices: this.sig,
 		};
+		return this.last;
 	}
 }

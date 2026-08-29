@@ -313,7 +313,9 @@ export function World({ live }: { live: Live }) {
 				pz[i] = z;
 			}
 
-			const glow = 0.22 + 1.5 * v.level + 2.2 * punch + 0.5 * s.beatPulse * (h % 2 === 0 ? 1 : 0.4);
+			// clamped: this is an additive line rig under bloom — unbounded gain
+			// is exactly how the earlier builds turned into a white blob
+			const glow = Math.min(3.2, 0.22 + 1.5 * v.level + 2.2 * punch + 0.5 * s.beatPulse * (h % 2 === 0 ? 1 : 0.4));
 			const cc = vColors[vi];
 			st.tmp.copy(cc).lerp(st.white, Math.min(0.65, punch * 0.5 + s.barPulse * 0.15));
 			const cr = st.tmp.r * glow;
@@ -362,7 +364,7 @@ export function World({ live }: { live: Live }) {
 				const pitch = -0.35 - f * 0.12 - 0.25 * strike.level;
 				const dx = Math.sin(a) * Math.cos(pitch);
 				const dy = Math.sin(pitch);
-				const dz = -Math.cos(a) * Math.cos(pitch) * -1;
+				const dz = Math.cos(a) * Math.cos(pitch);
 				const len = 24;
 				lpos[bi * 6] = o.x;
 				lpos[bi * 6 + 1] = o.y;
@@ -373,9 +375,11 @@ export function World({ live }: { live: Live }) {
 				// each beam belongs to a band of the strike voice: it lights when
 				// THAT band moves, so the fan flickers like the drum pattern
 				const band = strike.bands[b % 5];
-				const g =
+				const g = Math.min(
+					2.6,
 					ctl.lasers *
-					(0.05 + 1.9 * strikePunch * (0.35 + 0.65 * Math.abs(Math.cos(f * 6 + sweep * 3))) + 0.5 * band);
+						(0.05 + 1.9 * strikePunch * (0.35 + 0.65 * Math.abs(Math.cos(f * 6 + sweep * 3))) + 0.5 * band),
+				);
 				st.tmp.copy(st.accent).lerp(st.white, Math.min(0.8, strikePunch * 0.45));
 				for (const end of [0, 1]) {
 					const k = bi * 6 + end * 3;
