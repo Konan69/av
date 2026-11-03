@@ -36,7 +36,7 @@ export interface Voice {
 	features: StemFeatures;
 }
 
-const PRESENCE_FLOOR = 0.05; // below 5% of total energy the stem is not a voice
+const PRESENCE_FLOOR = 0.05; // sustained presence; brief foreground passages also qualify
 
 function percentile(xs: number[], p: number): number {
 	if (!xs.length) return 1;
@@ -52,23 +52,32 @@ function mean(xs: number[]): number {
 }
 
 export function discoverVoices(g: Genome): Voice[] {
-	const { per_stem, energy_frame_rate } = g.stems;
+	const { per_stem, energy_frame_rate, rms_frame_rate } = g.stems;
 	const names = g.stems.names.filter((n) => per_stem[n]);
 
 	const raw = names.map((stem) => {
-		const f = per_stem[stem];
+		// Attack correction can place successive detector events out of order.
+		// Index a sorted copy; retain the analyzer document exactly as supplied.
+		const f = { ...per_stem[stem], onsets: [...per_stem[stem].onsets].sort((a, b) => a.t - b.t) };
 		const energy = mean(f.rms);
 		const bandMeans = BAND_ORDER.map((b) => mean(f.energy[b] ?? []));
 		const bandTotal = bandMeans.reduce((a, b) => a + b, 0) || 1;
-		const audible = f.centroid.filter((_, i) => (f.rms[i * 2] ?? 0) > 0.005);
+		const audible = f.centroid.filter((_, i) => (f.rms[Math.floor(i * rms_frame_rate / energy_frame_rate)] ?? 0) > 0.005);
+		// A short solo can have a tiny track-wide share and still matter locally.
+		const foregroundFrames = f.rms.filter((level, i) => {
+			const mix = g.waveform.rms[Math.min(g.waveform.rms.length - 1, Math.floor(i * g.waveform.frame_rate / rms_frame_rate))] ?? 0;
+			return level >= 0.005 && level >= mix * 0.15;
+		}).length;
+		const activeRms = f.rms.filter((level) => level >= 0.005);
 		return {
 			stem,
 			features: f,
 			energy,
+			foreground: foregroundFrames / rms_frame_rate >= 0.06,
 			onsetRate: f.onsets.length / Math.max(1, g.duration),
 			brightness: mean(audible.length ? audible : f.centroid),
 			lowRatio: (bandMeans[0] + bandMeans[1]) / bandTotal,
-			rmsScale: 1 / percentile(f.rms, 0.95),
+			rmsScale: 1 / percentile(activeRms.length ? activeRms : f.rms, 0.95),
 			bandScale: new Float32Array(BAND_ORDER.map((b) => 1 / percentile(f.energy[b] ?? [], 0.95))),
 		};
 	});
@@ -76,7 +85,7 @@ export function discoverVoices(g: Genome): Voice[] {
 	const totalEnergy = raw.reduce((a, r) => a + r.energy, 0) || 1;
 	const present = raw
 		.map((r) => ({ ...r, share: r.energy / totalEnergy }))
-		.filter((r) => r.share >= PRESENCE_FLOOR)
+		.filter((r) => r.energy > 0 && (r.share >= PRESENCE_FLOOR || r.foreground))
 		.sort((a, b) => b.share - a.share);
 	if (!present.length) throw new Error("no audible stems in this genome");
 
@@ -110,7 +119,6 @@ export function discoverVoices(g: Genome): Voice[] {
 	claim("filament", (r) => r.share * (0.3 + r.brightness / maxBright));
 	claim("field", (r) => r.share * (0.5 + (1 - r.onsetRate / maxOnsetRate)));
 
-	void energy_frame_rate;
 	return present.map((r) => ({
 		stem: r.stem,
 		role: cast.get(r.stem) ?? "extra",

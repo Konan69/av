@@ -21,25 +21,31 @@ export async function analyzeBlob(
 	blob: Blob,
 	name: string,
 	onStage: (s: Stage) => void,
+	signal?: AbortSignal,
 ): Promise<TrackRecord> {
+	signal?.throwIfAborted();
 	onStage({ kind: "hashing" });
 	const sha = await sha256(blob);
+	signal?.throwIfAborted();
 	const hit = await getTrack(sha);
+	signal?.throwIfAborted();
 	if (hit) {
 		onStage({ kind: "cached" });
 		return hit;
 	}
 
-	const genome = await postAnalyze(blob, name, onStage);
+	const genome = await postAnalyze(blob, name, onStage, signal);
+	signal?.throwIfAborted();
 	if (genome.track_sha256 !== sha)
 		throw new Error(`analyzer hash mismatch (${genome.track_sha256.slice(0, 8)} vs ${sha.slice(0, 8)})`);
 	const rec: TrackRecord = { sha, name, size: blob.size, addedAt: Date.now(), audio: blob, genome };
 	await putTrack(rec);
+	signal?.throwIfAborted();
 	onStage({ kind: "ready" });
 	return rec;
 }
 
-function postAnalyze(blob: Blob, name: string, onStage: (s: Stage) => void): Promise<Genome> {
+function postAnalyze(blob: Blob, name: string, onStage: (s: Stage) => void, signal?: AbortSignal): Promise<Genome> {
 	return new Promise((res, rej) => {
 		const form = new FormData();
 		form.append("file", blob, name);
@@ -58,7 +64,15 @@ function postAnalyze(blob: Blob, name: string, onStage: (s: Stage) => void): Pro
 				500,
 			);
 		};
-		const done = () => tick !== undefined && clearInterval(tick);
+		const abort = () => xhr.abort();
+		const done = () => {
+			if (tick !== undefined) clearInterval(tick);
+			signal?.removeEventListener("abort", abort);
+		};
+		xhr.onabort = () => {
+			done();
+			rej(new DOMException("Analysis cancelled", "AbortError"));
+		};
 		xhr.onload = () => {
 			done();
 			if (xhr.status < 200 || xhr.status >= 300) {
@@ -81,6 +95,8 @@ function postAnalyze(blob: Blob, name: string, onStage: (s: Stage) => void): Pro
 			done();
 			rej(new Error("analyzer timed out"));
 		};
+		signal?.addEventListener("abort", abort, { once: true });
+		if (signal?.aborted) { done(); rej(new DOMException("Analysis cancelled", "AbortError")); return; }
 		xhr.send(form);
 	});
 }

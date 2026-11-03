@@ -1,0 +1,102 @@
+diff --git a/src/dashboard/core/hooks/useDashboardInputConfiguration.ts b/src/dashboard/core/hooks/useDashboardInputConfiguration.ts
+index d54d8c0..a9ace4c 100644
+--- a/src/dashboard/core/hooks/useDashboardInputConfiguration.ts
++++ b/src/dashboard/core/hooks/useDashboardInputConfiguration.ts
+@@ -17,6 +17,7 @@ export const useDashboardInputConfiguration = ({
+ }: UseDashboardInputConfigurationArgs) => {
+   const isInitialMountInput = useRef(true);
+   const prevInputConfigRef = useRef<Record<string, unknown> | null>(null);
++  const sequencerMode = (userData?.config as Record<string, unknown> | undefined)?.sequencerMode === true;
+ 
+   const pickInputConfigSummary = (cfg: Record<string, unknown> | null) => {
+     if (!cfg) return null;
+@@ -71,32 +72,14 @@ export const useDashboardInputConfiguration = ({
+         d.config.input = inputConfig;
+       });
+ 
+-      invokeIPC("input:configure", inputConfig).catch((err) => {
+-        console.error("[Dashboard] Failed to configure input:", err);
+-      });
++      if (!sequencerMode) {
++        invokeIPC("input:configure", inputConfig).catch((err) => {
++          console.error("[Dashboard] Failed to configure input:", err);
++        });
++      }
+     }
+     prevInputConfigRef.current = inputConfig;
+     isInitialMountInput.current = false;
+-  }, [inputConfig, invokeIPC, setUserData]);
++  }, [inputConfig, invokeIPC, setUserData, sequencerMode]);
+ 
+-  const prevSequencerModeRef = useRef<unknown>(undefined);
+-  useEffect(() => {
+-    const config = userData?.config && typeof userData.config === "object" ? userData.config : null;
+-    const next = config ? (config as Record<string, unknown>).sequencerMode : undefined;
+-    const prev = prevSequencerModeRef.current;
+-    prevSequencerModeRef.current = next;
+-
+-    if (prev === true && next === false) {
+-      const debug = readDebugFlag("nwWrld.debug.input");
+-      if (debug) {
+-        console.log("[InputDebug] sequencerMode disabled -> reconfiguring input", {
+-          inputConfig: pickInputConfigSummary(inputConfig),
+-        });
+-      }
+-      invokeIPC("input:configure", inputConfig).catch((err) => {
+-        console.error("[Dashboard] Failed to configure input:", err);
+-      });
+-    }
+-  }, [userData, inputConfig, invokeIPC]);
+ };
+-
+diff --git a/src/main/InputManager.ts b/src/main/InputManager.ts
+index 7de975d..998cc5b 100644
+--- a/src/main/InputManager.ts
++++ b/src/main/InputManager.ts
+@@ -313,6 +313,13 @@ class InputManager {
+   }
+ 
+   async initMIDI(midiConfig: RuntimeMidiConfig) {
++    if (!midiConfig?.deviceId?.trim() && !midiConfig?.deviceName?.trim()) {
++      this.teardownMidiWebMidiListeners();
++      this.currentSource = null;
++      this.broadcastStatus(INPUT_STATUS.DISCONNECTED, "Choose a MIDI input to connect.");
++      return;
++    }
++
+     return new Promise<void>((resolve, reject) => {
+       const setupMIDI = () => {
+         try {
+diff --git a/test/inputManagerRuntime.test.js b/test/inputManagerRuntime.test.js
+index 500652a..dd338e8 100644
+--- a/test/inputManagerRuntime.test.js
++++ b/test/inputManagerRuntime.test.js
+@@ -195,3 +195,28 @@ test("InputManager.attachProjectorWindow rebinds projector broadcast target", ()
+   }
+ });
+ 
++
++
++test("InputManager.initialize stays disconnected without enabling MIDI when no device is selected", async () => {
++  const previous = global.__nwWrldWebMidiOverride;
++  let enableCalls = 0;
++  const statuses = [];
++  const window = {
++    isDestroyed: () => false,
++    webContents: { isDestroyed: () => false, send: (_channel, payload) => statuses.push(payload) },
++  };
++  try {
++    global.__nwWrldWebMidiOverride = { enabled: false, enable: () => { enableCalls += 1; } };
++    const manager = new InputManager(window, window);
++    await manager.initialize({
++      type: "midi", trackSelectionChannel: 2, methodTriggerChannel: 1,
++      velocitySensitive: false, port: 8000,
++    });
++    assert.equal(enableCalls, 0);
++    assert.equal(manager.currentSource, null);
++    assert.equal(statuses.at(-1).data.status, "disconnected");
++  } finally {
++    if (previous === undefined) delete global.__nwWrldWebMidiOverride;
++    else global.__nwWrldWebMidiOverride = previous;
++  }
++});

@@ -1,0 +1,23 @@
+diff --git a/src/main/mainProcess/entry.ts b/src/main/mainProcess/entry.ts
+index 0943e63..ea7bb7b 100644
+--- a/src/main/mainProcess/entry.ts
++++ b/src/main/mainProcess/entry.ts
+@@ -15,7 +15,7 @@ import {
+ import { isExistingDirectory } from "./pathSafety";
+ 
+ const getTestProjectDir = (): string | null => {
+-  const raw = process.env.NW_WRLD_TEST_PROJECT_DIR;
++  const raw = process.env.NW_WRLD_PROJECT_DIR || process.env.NW_WRLD_TEST_PROJECT_DIR;
+   if (!raw || typeof raw !== "string") return null;
+   const dir = raw.trim();
+   if (!dir) return null;
+@@ -24,6 +24,9 @@ const getTestProjectDir = (): string | null => {
+ };
+ 
+ export function start() {
++  if (process.env.NW_WRLD_USER_DATA_DIR) {
++    app.setPath("userData", process.env.NW_WRLD_USER_DATA_DIR);
++  }
+   setupApp();
+ 
+   registerIpcBridge();

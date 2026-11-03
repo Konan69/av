@@ -38,15 +38,16 @@ function open(): Promise<IDBDatabase> {
 }
 
 function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-	return open().then(
-		(db) =>
-			new Promise<T>((res, rej) => {
-				const t = db.transaction(STORE, mode);
-				const req = fn(t.objectStore(STORE));
-				req.onsuccess = () => res(req.result);
-				req.onerror = () => rej(req.error);
-			}),
-	);
+	return open().then((db) => new Promise<T>((res, rej) => {
+		const transaction = db.transaction(STORE, mode);
+		let request: IDBRequest<T>;
+		try { request = fn(transaction.objectStore(STORE)); }
+		catch (error) { db.close(); rej(error); return; }
+		transaction.oncomplete = () => { db.close(); res(request.result); };
+		transaction.onerror = transaction.onabort = () => {
+			db.close(); rej(transaction.error ?? request.error ?? new Error("Library transaction failed"));
+		};
+	}));
 }
 
 export async function sha256(blob: Blob): Promise<string> {

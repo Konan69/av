@@ -6,15 +6,16 @@
  *   THE GRID    beats / downbeats / phrases
  *   THE NERVES  per-VOICE rms, bands, onsets, wobble (from the stems)
  *
- * Nothing here is driven by wall-clock time. The one continuous motion in
- * the system is a Lorenz attractor whose regime follows the tension curve,
- * whose speed follows how loud the track currently is (silence = stillness)
- * and which is kicked by the pulse voice's onsets. Chaos on a leash.
+ * Every output is sampled at absolute audio time. Onset envelopes and wobble
+ * integrals are indexed once; the music-driven trajectory is baked on a fixed
+ * grid so pauses, seeks, and different render frame rates produce the same world.
  */
 import type { Genome, Section } from "./genome";
 import { BAND_ORDER } from "./genome";
 import type { WorldSeed } from "./seed";
+import { PhraseScore, type PhraseScoreSignal } from "./phraseScore";
 import { discoverVoices, type Voice } from "./voices";
+import { HarmonyScore, type HarmonySignal } from "./harmony";
 
 export interface VoiceSignal {
 	stem: string;
@@ -28,9 +29,33 @@ export interface VoiceSignal {
 	/** 5 normalized band energies of this layer */
 	bands: Float32Array;
 	share: number;
+	/** how many of this layer's onsets have happened by now (a hit counter, pure lookup) */
+	hits: number;
+	/** seconds since this layer's latest onset (large before the first) */
+	since: number;
+}
+
+/** The grid in seconds, and where we are among the section's 8-bar phrases. */
+export interface Clock {
+	beat: number;
+	bar: number;
+	phraseIndex: number;
+	phraseCount: number;
+	phraseStart: number;
+	phraseEnd: number;
+	/** the section's bar start times (its start, then every observed downbeat inside it) */
+	sectionBars: number[];
+	/** index into sectionBars of the bar we are in */
+	barInSection: number;
 }
 
 export interface Signals {
+	/** Precomputed musical form; optional only for older synthetic fixtures. */
+	phraseScore?: PhraseScoreSignal;
+	/** bar-level chord read from the stems' chroma; optional for synthetic fixtures */
+	harmony?: HarmonySignal;
+	/** grid timing; optional for synthetic fixtures */
+	clock?: Clock;
 	time: number;
 	section: Section;
 	/** index into conductor.sections — scenes key their choices off this */
@@ -103,21 +128,23 @@ export class Conductor {
 	readonly beats: number[];
 	readonly downbeats: number[];
 	readonly barDur: number;
+	readonly phraseScore: PhraseScore;
+	readonly harmony: HarmonyScore;
 	/** boundary time snapped to the nearest downbeat — morphs land here */
 	private snapped: number[];
 	private rmsScale: number;
 	private labelIdx: Map<string, number>;
 
-	private punch: Float32Array;
-	private onsetPtr: number[];
+	private onsetPeaks: number[][];
 	private onsetTimes: number[][];
 	/** last frame the render loop computed — read-only consumers use this */
 	last: Signals | null = null;
-	private wobPhase = 0;
-	private lastT = 0;
-	private lz = new Float32Array([0.9, 0.4, 12]);
+	private wobIntegral: Float64Array;
+	private trajectory: Float32Array;
+	private readonly trajectoryFps = 120;
 	private chaos = new Float32Array(3);
 	private sig: VoiceSignal[];
+	private sectionBars: number[][] = [];
 
 	constructor(g: Genome, seed: WorldSeed) {
 		this.g = g;
@@ -138,27 +165,42 @@ export class Conductor {
 		const diffs = this.downbeats.slice(1).map((d, i) => d - this.downbeats[i]);
 		this.barDur = diffs.length ? percentile(diffs, 0.5) : 2;
 
-		// every section boundary snaps to the first downbeat at/after it, so a
-		// morph completes ON the bar rather than near it
-		this.snapped = this.sections.map((s) => {
-			let best = s.start;
-			let bestD = Infinity;
+		// Use the same snapped intervals for section selection and morph targets.
+		// The first section covers the lead-in; collapsed intervals are omitted.
+		const aligned: Section[] = [{ ...this.sections[0], start: 0 }];
+		for (const section of this.sections.slice(1)) {
+			let start = section.start;
+			let distance = Infinity;
 			for (const d of this.downbeats) {
-				const gap = Math.abs(d - s.start);
-				if (gap < bestD) {
-					bestD = gap;
-					best = d;
+				if (Math.abs(d - section.start) < distance) {
+					start = d;
+					distance = Math.abs(d - section.start);
 				}
-				if (d > s.start + 4) break;
 			}
-			return best;
-		});
+			if (start <= aligned[aligned.length - 1].start || start >= g.duration) continue;
+			aligned[aligned.length - 1].end = start;
+			aligned.push({ ...section, start, end: g.duration });
+		}
+		aligned[aligned.length - 1].end = g.duration;
+		this.sections = aligned;
+		this.snapped = aligned.map((s) => s.start);
+		this.sectionBars = this.sections.map((s) => [s.start, ...this.downbeats.filter((d) => d > s.start + 1e-6 && d < s.end - 1e-6)]);
+		this.phraseScore = new PhraseScore(g, this.voices, this.sections, this.downbeats, this.barDur);
+		this.harmony = new HarmonyScore(g, this.voices, this.downbeats, this.beats,
+			(t) => this.sections[Math.max(0, lowerBound(this.snapped, t))]?.label ?? "intro", seed);
 
 		this.rmsScale = 1 / percentile(g.waveform.rms, 0.95);
 		this.labelIdx = new Map(g.sections.labels.map((l, i) => [l, i]));
 
-		this.punch = new Float32Array(this.voices.length);
-		this.onsetPtr = this.voices.map(() => 0);
+		this.onsetPeaks = this.voices.map((v) => {
+			let peak = 0;
+			let previous = 0;
+			return v.features.onsets.map((onset) => {
+				peak = Math.min(1.6, peak * Math.exp(-PUNCH_DECAY * (onset.t - previous)) + onset.strength);
+				previous = onset.t;
+				return peak;
+			});
+		});
 		this.onsetTimes = this.voices.map((v) => v.features.onsets.map((o) => o.t));
 		this.sig = this.voices.map((v) => ({
 			stem: v.stem,
@@ -168,7 +210,59 @@ export class Conductor {
 			bright: 0,
 			bands: new Float32Array(5),
 			share: v.share,
+			hits: 0,
+			since: 1e3,
 		}));
+		const rates = g.wobble.rate_hz;
+		this.wobIntegral = new Float64Array(rates.length);
+		for (let i = 1; i < rates.length; i++)
+			this.wobIntegral[i] = this.wobIntegral[i - 1] + (rates[i - 1] + rates[i]) / (2 * g.wobble.frame_rate);
+		this.trajectory = this.bakeTrajectory();
+
+	}
+
+	private onsetEnvelope(voice: number, t: number): number {
+		const index = lowerBound(this.onsetTimes[voice], t);
+		return index < 0 ? 0 : this.onsetPeaks[voice][index] * Math.exp(-PUNCH_DECAY * (t - this.onsetTimes[voice][index]));
+	}
+
+	private wobbleAt(t: number): number {
+		const rates = this.g.wobble.rate_hz;
+		if (!rates.length || this.g.wobble.frame_rate <= 0) return 0;
+		const fps = this.g.wobble.frame_rate;
+		const index = Math.min(rates.length - 1, Math.floor(t * fps));
+		const dt = t - index / fps;
+		const slope = index < rates.length - 1 ? (rates[index + 1] - rates[index]) * fps : 0;
+		return 2 * Math.PI * (this.wobIntegral[index] + rates[index] * dt + slope * dt * dt / 2);
+	}
+
+	/** Fixed audio-time integration: independent of the render loop's history. */
+	private bakeTrajectory(): Float32Array {
+		const count = Math.ceil(this.g.duration * this.trajectoryFps) + 1;
+		const points = new Float32Array(count * 3);
+		let x = 0.9, y = 0.4, z = 12;
+		const pulse = this.voices.findIndex((v) => v.role === "pulse");
+		for (let i = 0; i < count; i++) {
+			const t = i / this.trajectoryFps;
+			const tension = sampleLerp(this.g.tension.curve, this.g.tension.frame_rate, t);
+			const rho = 16 + 26 * tension;
+			points[i * 3] = Math.max(-1.5, Math.min(1.5, x / 18));
+			points[i * 3 + 1] = Math.max(-1.5, Math.min(1.5, y / 22));
+			points[i * 3 + 2] = Math.max(-1.5, Math.min(1.5, (z - rho) / 22));
+			const rms = Math.min(1.3, sampleLerp(this.g.waveform.rms, this.g.waveform.frame_rate, t) * this.rmsScale);
+			const flow = rms * 3.52 / this.trajectoryFps;
+			const steps = Math.max(1, Math.ceil(flow / 0.004));
+			const h = flow / steps;
+			for (let step = 0; step < steps; step++) {
+				const dx = this.seed.sigma * (y - x), dy = x * (rho - z) - y, dz = x * y - this.seed.beta * z;
+				x += h * dx; y += h * dy; z += h * dz;
+			}
+			if (pulse >= 0) x += this.onsetEnvelope(pulse, t) * 36 / this.trajectoryFps;
+			if (!Number.isFinite(x + y + z) || Math.abs(x) + Math.abs(y) + Math.abs(z) > 400) {
+				x = 0.9; y = 0.4; z = 12;
+			}
+		}
+		return points;
 	}
 
 	/** recent onsets of one role, for ripples on the floor. Allocation-free
@@ -184,44 +278,27 @@ export class Conductor {
 	}
 
 	sample(t: number): Signals {
-		let dt = t - this.lastT;
-		const seeked = dt < 0 || dt > 0.75;
-		if (seeked) {
-			this.punch.fill(0);
-			this.voices.forEach((v, i) => {
-				let p = 0;
-				while (p < v.features.onsets.length && v.features.onsets[p].t < t) p++;
-				this.onsetPtr[i] = p;
-			});
-			dt = 0;
-		}
-		this.lastT = t;
-
+		t = Math.max(0, Math.min(this.g.duration, Number.isFinite(t) ? t : 0));
 		const g = this.g;
-		const decay = Math.exp(-PUNCH_DECAY * dt);
 		const stemsFps = g.stems.rms_frame_rate;
 		const bandFps = g.stems.energy_frame_rate;
 
 		for (let i = 0; i < this.voices.length; i++) {
 			const v = this.voices[i];
-			this.punch[i] *= decay;
-			const os = v.features.onsets;
-			while (this.onsetPtr[i] < os.length && os[this.onsetPtr[i]].t <= t) {
-				this.punch[i] = Math.min(1.6, this.punch[i] + os[this.onsetPtr[i]].strength);
-				this.onsetPtr[i]++;
-			}
 			const s = this.sig[i];
 			s.level = Math.min(1.3, sampleLerp(v.features.rms, stemsFps, t) * v.rmsScale);
-			s.punch = this.punch[i];
+			s.punch = this.onsetEnvelope(i, t);
+			const last = lowerBound(this.onsetTimes[i], t);
+			s.hits = last + 1;
+			s.since = last < 0 ? 1e3 : t - this.onsetTimes[i][last];
 			for (let b = 0; b < 5; b++)
 				s.bands[b] = Math.min(1.3, sampleLerp(v.features.energy[BAND_ORDER[b]], bandFps, t) * v.bandScale[b]);
 			s.bright = Math.min(1, sampleLerp(v.features.centroid, bandFps, t) / 6000);
 		}
 
 		// wobble comes from the isolated bass layer, so it is the real LFO
-		const wobRate = sampleLerp(g.wobble.rate_hz, g.wobble.frame_rate, t);
 		const wobDepth = sampleLerp(g.wobble.depth, g.wobble.frame_rate, t);
-		this.wobPhase += 2 * Math.PI * wobRate * dt;
+
 
 		const bi = lowerBound(this.beats, t);
 		const beatPhase =
@@ -230,17 +307,26 @@ export class Conductor {
 		const barPhase = di < 0 ? 0 : Math.min(1, (t - this.downbeats[di]) / this.barDur);
 		const phrase = di < 0 ? 0 : ((di % PHRASE_BARS) + barPhase) / PHRASE_BARS;
 
-		const secIdx = Math.max(
-			0,
-			this.sections.findIndex((s) => t >= s.start && t < s.end),
-		);
-		const section = this.sections[secIdx] ?? this.sections[this.sections.length - 1];
-		const nextIdx = this.sections.findIndex((s) => s.start > t);
+		const secIdx = Math.max(0, lowerBound(this.snapped, t));
+		const section = this.sections[secIdx];
+		const nextIdx = secIdx + 1 < this.sections.length ? secIdx + 1 : -1;
 		const target = nextIdx >= 0 ? this.snapped[nextIdx] : Infinity;
-		const morphStart = target - 4 * this.barDur;
+		// A section shorter than four bars morphs over its whole length, never starting half-done.
+		const morphStart = Math.max(this.snapped[secIdx], target - 4 * this.barDur);
 		const morph = Number.isFinite(target)
 			? Math.max(0, Math.min(1, (t - morphStart) / (target - morphStart || 1)))
 			: 0;
+
+		// Phrases are eight downbeats counted from the section's own first downbeat.
+		const firstBar = lowerBound(this.downbeats, section.start - 1e-6) + 1;
+		const lastBar = lowerBound(this.downbeats, section.end - 1e-6);
+		const phraseCount = Math.max(1, Math.ceil((lastBar - firstBar + 1) / PHRASE_BARS));
+		const phraseIndex = di >= firstBar ? Math.min(phraseCount - 1, Math.floor((di - firstBar) / PHRASE_BARS)) : 0;
+		const phraseStart = phraseIndex === 0 ? section.start : this.downbeats[firstBar + PHRASE_BARS * phraseIndex];
+		const phraseEnd = Math.min(section.end, this.downbeats[firstBar + PHRASE_BARS * (phraseIndex + 1)] ?? section.end);
+		const beatLength = bi >= 0 && bi < this.beats.length - 1 ? this.beats[bi + 1] - this.beats[bi] : this.barDur / 4;
+		const sectionBars = this.sectionBars[secIdx] ?? [section.start];
+		const barInSection = Math.max(0, lowerBound(sectionBars, t));
 
 		const P = g.sections.label_probs;
 		const pi = Math.max(0, Math.min(P.length - 1, Math.round(t * g.sections.frame_rate)));
@@ -252,37 +338,18 @@ export class Conductor {
 		const rms = Math.min(1.3, sampleLerp(g.waveform.rms, g.waveform.frame_rate, t) * this.rmsScale);
 		const tension = sampleLerp(g.tension.curve, g.tension.frame_rate, t);
 
-		// ── chaos on a leash ───────────────────────────────────────────────
-		// rho (the regime knob) rides the tension curve: the attractor changes
-		// character because the MUSIC changed character. Integration speed
-		// follows loudness, so a breakdown genuinely slows the world down.
-		//
-		// Explicit Euler on Lorenz diverges fast at these sigma/rho values, and
-		// one NaN here poisons the camera and every vertex downstream (a black
-		// screen, silently). So: fixed small substeps, bounded substep count,
-		// magnitude clamp, and a hard reseed if it ever leaves the reals.
-		const rho = 16 + 26 * tension;
-		const flow = Math.min(0.2, dt * (0.15 + 1.6 * rms) * 2.2);
-		const H = 0.004;
-		const steps = Math.max(1, Math.min(64, Math.ceil(flow / H)));
-		const h = flow / steps;
-		for (let k = 0; k < steps; k++) {
-			const x = this.lz[0];
-			const y = this.lz[1];
-			const z = this.lz[2];
-			this.lz[0] = x + h * (this.seed.sigma * (y - x));
-			this.lz[1] = y + h * (x * (rho - z) - y);
-			this.lz[2] = z + h * (x * y - this.seed.beta * z);
+		const trajectoryTime = t * this.trajectoryFps;
+		const frame = Math.min(Math.floor(trajectoryTime), this.trajectory.length / 3 - 1);
+		const nextFrame = Math.min(frame + 1, this.trajectory.length / 3 - 1);
+		for (let axis = 0; axis < 3; axis++) {
+			const a = this.trajectory[frame * 3 + axis], b = this.trajectory[nextFrame * 3 + axis];
+			this.chaos[axis] = a + (b - a) * (trajectoryTime - frame);
 		}
-		const pulseIdx = this.voices.findIndex((v) => v.role === "pulse");
-		if (pulseIdx >= 0) this.lz[0] += this.punch[pulseIdx] * 0.6 * Math.min(1, dt * 60);
-		const mag = Math.abs(this.lz[0]) + Math.abs(this.lz[1]) + Math.abs(this.lz[2]);
-		if (!Number.isFinite(mag) || mag > 400) this.lz.set([0.9, 0.4, 12]);
-		this.chaos[0] = Math.max(-1.5, Math.min(1.5, this.lz[0] / 18));
-		this.chaos[1] = Math.max(-1.5, Math.min(1.5, this.lz[1] / 22));
-		this.chaos[2] = Math.max(-1.5, Math.min(1.5, (this.lz[2] - rho) / 22));
 
 		this.last = {
+			phraseScore: this.phraseScore.sample(t),
+			harmony: this.harmony.sample(t),
+			clock: { beat: beatLength, bar: this.barDur, phraseIndex, phraseCount, phraseStart, phraseEnd, sectionBars, barInSection },
 			time: t,
 			section,
 			sectionIndex: secIdx,
@@ -295,13 +362,13 @@ export class Conductor {
 			barPhase,
 			beatIndex: bi,
 			downbeatIndex: di,
-			beatPulse: Math.exp(-6 * beatPhase),
-			barPulse: Math.exp(-3.2 * barPhase),
+			beatPulse: bi < 0 ? 0 : Math.exp(-6 * (t - this.beats[bi]) / (this.beats[bi + 1] - this.beats[bi] || this.barDur / 4)),
+			barPulse: di < 0 ? 0 : Math.exp(-3.2 * (t - this.downbeats[di]) / this.barDur),
 			rms,
 			tension,
 			ambiguity,
 			drive: dropP * rms,
-			wobblePhase: this.wobPhase,
+			wobblePhase: this.wobbleAt(t),
 			wobbleDepth: wobDepth,
 			chaos: this.chaos,
 			voices: this.sig,

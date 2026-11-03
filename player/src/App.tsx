@@ -1,13 +1,14 @@
 import { Canvas } from "@react-three/fiber";
 import { Leva } from "leva";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { analyzeBlob, fetchFolderTrack, listFolder, type Stage } from "./analyzer";
-import { Transport } from "./audio";
-import { Conductor } from "./conductor";
+import { fetchFolderTrack, listFolder, type Stage } from "./analyzer";
+import type { Transport } from "./audio";
+import type { Conductor } from "./conductor";
 import type { Genome } from "./genome";
 import { deleteTrack, getTrack, listTracks, type TrackMeta } from "./library";
 import { Overlay } from "./Overlay";
-import { seedFromSha, type WorldSeed } from "./seed";
+import type { WorldSeed } from "./seed";
+import { MusicSession } from "./session";
 import { World } from "./World";
 
 export interface Live {
@@ -31,7 +32,16 @@ export default function App() {
 	// exactly one Transport may be alive at a time: each owns an AudioContext,
 	// so an abandoned one keeps playing over the new track forever.
 	const liveRef = useRef<Live | null>(null);
-	const startingRef = useRef(false);
+	const sessionRef = useRef<MusicSession | null>(null);
+	useEffect(() => {
+		const session = new MusicSession(setStage);
+		sessionRef.current = session;
+		return () => {
+			session.dispose();
+			if (sessionRef.current === session) sessionRef.current = null;
+			liveRef.current = null;
+		};
+	}, []);
 
 	const refresh = useCallback(() => {
 		void listTracks().then(setLib);
@@ -40,36 +50,31 @@ export default function App() {
 	useEffect(refresh, [refresh]);
 
 	const stopCurrent = useCallback(() => {
+		sessionRef.current?.cancel();
 		liveRef.current?.transport.dispose();
+		if (sessionRef.current) sessionRef.current.current = null;
 		liveRef.current = null;
 		setLive(null);
 	}, []);
 
 	const start = useCallback(
 		async (blob: Blob, name: string) => {
-			// a second click while the first is still resolving used to spawn a
-			// second player on top of the first
-			if (startingRef.current) return;
-			startingRef.current = true;
+			const session = sessionRef.current;
+			if (!session) return;
 			stopCurrent();
 			setErr("");
 			try {
-				const rec = await analyzeBlob(blob, name, setStage);
-				const transport = new Transport();
-				await transport.load(rec.audio);
-				const seed = seedFromSha(rec.sha);
-				const conductor = new Conductor(rec.genome, seed);
-				const next: Live = { genome: rec.genome, conductor, transport, seed, name: rec.name };
+				const next = await session.open(blob, name);
+				if (!next || sessionRef.current !== session) return;
 				setStage(null);
 				liveRef.current = next;
 				setLive(next);
-				void transport.play();
-				refresh();
+				await next.transport.play();
+				if (sessionRef.current === session && session.current === next) refresh();
 			} catch (e) {
+				if (sessionRef.current !== session) return;
 				setStage(null);
 				setErr(e instanceof Error ? e.message : String(e));
-			} finally {
-				startingRef.current = false;
 			}
 		},
 		[refresh, stopCurrent],
@@ -121,6 +126,7 @@ export default function App() {
 				return live.transport.duration;
 			},
 		};
+		return () => { delete (window as unknown as { __player?: unknown }).__player; };
 	}, [live]);
 
 	useEffect(() => {

@@ -1,0 +1,218 @@
+{
+  "config": {
+    "activeSetId": "genome_set",
+    "activeTrackId": 1,
+    "autoRefresh": true,
+    "bgColor": "black",
+    "aspectRatio": "default",
+    "sequencerMode": true,
+    "sequencerMuted": true,
+    "sequencerBpm": 120,
+    "input": {
+      "type": "midi",
+      "deviceName": "",
+      "trackSelectionChannel": 2,
+      "methodTriggerChannel": 1,
+      "velocitySensitive": false,
+      "noteMatchMode": "pitchClass",
+      "port": 8000
+    },
+    "trackMappings": {
+      "midi": {
+        "pitchClass": {
+          "1": 0,
+          "2": 1,
+          "3": 2,
+          "4": 3,
+          "5": 4,
+          "6": 5,
+          "7": 6,
+          "8": 7,
+          "9": 8,
+          "10": 9,
+          "11": 10,
+          "12": 11
+        },
+        "exactNote": {
+          "1": 60,
+          "2": 61,
+          "3": 62,
+          "4": 63,
+          "5": 64,
+          "6": 65,
+          "7": 66,
+          "8": 67,
+          "9": 68,
+          "10": 69,
+          "11": 70,
+          "12": 71
+        }
+      },
+      "osc": {
+        "1": "/track/1",
+        "2": "/track/2",
+        "3": "/track/3",
+        "4": "/track/4",
+        "5": "/track/5",
+        "6": "/track/6",
+        "7": "/track/7",
+        "8": "/track/8",
+        "9": "/track/9",
+        "10": "/track/10"
+      }
+    },
+    "channelMappings": {
+      "midi": {
+        "pitchClass": {
+          "1": 0,
+          "2": 1,
+          "3": 2,
+          "4": 3,
+          "5": 4,
+          "6": 5,
+          "7": 6,
+          "8": 7,
+          "9": 8,
+          "10": 9,
+          "11": 10,
+          "12": 11
+        },
+        "exactNote": {
+          "1": 72,
+          "2": 73,
+          "3": 74,
+          "4": 75,
+          "5": 76,
+          "6": 77,
+          "7": 78,
+          "8": 79,
+          "9": 80,
+          "10": 81,
+          "11": 82,
+          "12": 83
+        }
+      },
+      "osc": {
+        "1": "/ch/1",
+        "2": "/ch/2",
+        "3": "/ch/3",
+        "4": "/ch/4",
+        "5": "/ch/5",
+        "6": "/ch/6",
+        "7": "/ch/7",
+        "8": "/ch/8",
+        "9": "/ch/9",
+        "10": "/ch/10",
+        "11": "/ch/11",
+        "12": "/ch/12"
+      }
+    }
+  },
+  "sets": [
+    {
+      "id": "genome_set",
+      "name": "Genome World",
+      "tracks": [
+        {
+          "id": 1,
+          "name": "Genome World",
+          "trackSlot": 1,
+          "bpm": 120,
+          "channelMappings": {
+            "1": 1,
+            "2": 2,
+            "3": 3,
+            "4": 4
+          },
+          "modules": [
+            {
+              "id": "genome_world_1",
+              "type": "GenomeWorld"
+            }
+          ],
+          "modulesData": {
+            "genome_world_1": {
+              "constructor": [
+                {
+                  "name": "matrix",
+                  "options": [
+                    {
+                      "name": "matrix",
+                      "value": {
+                        "rows": 1,
+                        "cols": 1,
+                        "excludedCells": []
+                      }
+                    },
+                    {
+                      "name": "border",
+                      "value": false
+                    }
+                  ]
+                },
+                {
+                  "name": "show",
+                  "options": [
+                    {
+                      "name": "duration",
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "name": "showControls",
+                  "options": [
+                    {
+                      "name": "visible",
+                      "value": true
+                    }
+                  ]
+                }
+              ],
+              "methods": {
+                "1": [
+                  {
+                    "name": "playTrack",
+                    "options": []
+                  }
+                ],
+                "2": [
+                  {
+                    "name": "pauseTrack",
+                    "options": []
+                  }
+                ],
+                "3": [
+                  {
+                    "name": "showControls",
+                    "options": [
+                      {
+                        "name": "visible",
+                        "value": false
+                      }
+                    ]
+                  }
+                ],
+                "4": [
+                  {
+                    "name": "showControls",
+                    "options": [
+                      {
+                        "name": "visible",
+                        "value": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "sequencer": {
+            "bpm": 120,
+            "pattern": {}
+          }
+        }
+      ]
+    }
+  ]
+}

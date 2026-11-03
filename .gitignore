@@ -6,3 +6,7 @@ engine/target/
 genome/engine/target/
 *.genome.json
 .DS_Store
+.runtime/
+nw/project/
+artifacts/visual-tests/
+artifacts/references/

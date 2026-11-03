@@ -1,19 +1,36 @@
 /** Web Audio transport: the AudioContext clock is THE clock. */
-
 export class Transport {
-	private ctx = new AudioContext();
-	private gain = this.ctx.createGain();
+	private ctx: AudioContext;
+	private gain: GainNode;
 	private buffer: AudioBuffer | null = null;
 	private source: AudioBufferSourceNode | null = null;
-	private startedAt = 0; // ctx.currentTime when playback began
-	private offset = 0; // track position at that moment
+	private startedAt = 0;
+	private offset = 0;
+	private disposed = false;
+	private revision = 0;
+	private loadRevision = 0;
+	private wantsPlayback = false;
+	private pendingPlay: Promise<void> | null = null;
+	private listeners = new Set<() => void>();
 	playing = false;
 
-	constructor() {
+	constructor(context?: AudioContext) {
+		this.ctx = context ?? new AudioContext();
+		this.gain = this.ctx.createGain();
 		this.gain.connect(this.ctx.destination);
-		// ?muted lets automated QA run without making a sound
-		if (new URLSearchParams(location.search).has("muted"))
+		if (typeof location !== "undefined" && new URLSearchParams(location.search).has("muted"))
 			this.gain.gain.value = 0;
+	}
+
+	/** State transitions wake renderers; the AudioContext remains the only clock. */
+	subscribe(listener: () => void): () => void {
+		if (this.disposed) return () => {};
+		this.listeners.add(listener);
+		return () => { this.listeners.delete(listener); };
+	}
+
+	private notify() {
+		for (const listener of this.listeners) listener();
 	}
 
 	set muted(m: boolean) {
@@ -21,60 +38,108 @@ export class Transport {
 	}
 
 	async load(file: Blob) {
-		this.buffer = await this.ctx.decodeAudioData(await file.arrayBuffer());
+		if (this.disposed) return;
+		const request = ++this.loadRevision;
+		this.pause();
+		this.buffer = null;
+		this.offset = 0;
+		this.notify();
+		const bytes = await file.arrayBuffer();
+		if (this.disposed || request !== this.loadRevision) return;
+		const buffer = await this.ctx.decodeAudioData(bytes);
+		if (this.disposed || request !== this.loadRevision) return;
+		this.buffer = buffer;
+		this.notify();
 	}
 
-	get duration() {
-		return this.buffer?.duration ?? 0;
-	}
+	get duration() { return this.buffer?.duration ?? 0; }
 
 	get time(): number {
-		if (!this.playing) return this.offset;
-		return Math.min(
-			this.duration,
-			this.ctx.currentTime - this.startedAt + this.offset,
-		);
+		return this.playing ? Math.min(this.duration, this.ctx.currentTime - this.startedAt + this.offset) : this.offset;
 	}
 
-	async play() {
-		if (!this.buffer || this.playing) return;
-		await this.ctx.resume();
-		const src = this.ctx.createBufferSource();
-		src.buffer = this.buffer;
-		src.connect(this.gain);
-		src.onended = () => {
-			if (this.source === src) this.pause();
-		};
-		src.start(0, this.offset);
-		this.source = src;
-		this.startedAt = this.ctx.currentTime;
-		this.playing = true;
+	play(): Promise<void> {
+		if (this.disposed || !this.buffer || this.playing) return Promise.resolve();
+		if (this.pendingPlay) return this.pendingPlay;
+		this.wantsPlayback = true;
+		const request = ++this.revision;
+		const pending = this.startPlayback(request);
+		this.pendingPlay = pending;
+		void pending.then(() => {
+			if (this.pendingPlay === pending) this.pendingPlay = null;
+		}, () => {
+			if (this.pendingPlay === pending) this.pendingPlay = null;
+		});
+		return pending;
+	}
+
+	private async startPlayback(request: number) {
+		try {
+			await this.ctx.resume();
+			if (this.disposed || request !== this.revision || !this.wantsPlayback || !this.buffer) return;
+			if (this.offset >= this.duration) this.offset = 0;
+			const src = this.ctx.createBufferSource();
+			src.buffer = this.buffer;
+			src.connect(this.gain);
+			src.onended = () => {
+				if (this.source !== src) return;
+				this.offset = this.duration;
+				this.playing = false;
+				this.wantsPlayback = false;
+				this.source = null;
+				src.disconnect();
+				this.notify();
+			};
+			src.start(0, this.offset);
+			this.source = src;
+			this.startedAt = this.ctx.currentTime;
+			this.playing = true;
+			this.notify();
+		} catch (error) {
+			if (request === this.revision) this.wantsPlayback = false;
+			throw error;
+		}
 	}
 
 	pause() {
-		if (!this.playing) return;
 		this.offset = this.time;
 		this.playing = false;
-		this.source?.stop();
+		this.wantsPlayback = false;
+		this.revision++;
+		this.pendingPlay = null;
+		const src = this.source;
 		this.source = null;
+		if (src) {
+			src.onended = null;
+			src.stop();
+			src.disconnect();
+		}
+		this.notify();
 	}
 
 	async seek(t: number) {
-		const wasPlaying = this.playing;
+		if (this.disposed) return;
+		const wasPlaying = this.wantsPlayback;
 		this.pause();
-		this.offset = Math.max(0, Math.min(this.duration, t));
-		if (wasPlaying) await this.play();
+		this.offset = Math.max(0, Math.min(this.duration, Number.isFinite(t) ? t : 0));
+		this.notify();
+		// Seeking to the end parks there. An explicit play starts a new pass.
+		if (wasPlaying && this.offset < this.duration) await this.play();
 	}
 
 	async toggle() {
-		this.playing ? this.pause() : await this.play();
+		this.wantsPlayback ? this.pause() : await this.play();
 	}
 
-	/** Stop for good and release the AudioContext. A Transport owns its own
-	 *  context, so an abandoned one keeps playing forever unless disposed. */
 	dispose() {
+		if (this.disposed) return;
 		this.pause();
+		this.disposed = true;
+		this.loadRevision++;
 		this.buffer = null;
+		this.gain.disconnect();
 		void this.ctx.close().catch(() => {});
+		this.notify();
+		this.listeners.clear();
 	}
 }

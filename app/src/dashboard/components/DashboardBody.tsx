@@ -1,0 +1,77 @@
+import { getActiveSetTracks } from "../../shared/utils/setUtils";
+import { TrackItem } from "./track/TrackItem";
+import type { AudioCaptureState } from "../core/hooks/useDashboardAudioCapture";
+import type { FileAudioState } from "../core/hooks/useDashboardFileAudio";
+
+type DashboardBodyProps = {
+  userData: unknown;
+  activeSetId: unknown;
+  activeTrackId: string | number | null;
+  predefinedModules: unknown[];
+  openAddModuleModal: (trackIndex: number) => void;
+  openConfirmationModal: (message: string, onConfirm: () => void) => void;
+  inputConfig: unknown;
+  config: Record<string, unknown> | null;
+  isSequencerPlaying: boolean;
+  handleSequencerToggle: (channelName: string, stepIndex: number) => void;
+  workspacePath: string | null;
+  workspaceModuleFiles: string[];
+  workspaceModuleLoadFailures: string[];
+  audioCaptureState: AudioCaptureState;
+  fileAudioState: FileAudioState;
+};
+
+export const DashboardBody = ({
+  userData,
+  activeSetId,
+  activeTrackId,
+  predefinedModules,
+  openAddModuleModal,
+  openConfirmationModal,
+  inputConfig,
+  config,
+  isSequencerPlaying,
+  handleSequencerToggle,
+  workspacePath,
+  workspaceModuleFiles,
+  workspaceModuleLoadFailures,
+  audioCaptureState,
+  fileAudioState,
+}: DashboardBodyProps) => {
+  const tracks = getActiveSetTracks(userData, activeSetId);
+  const hasActiveTrack = activeTrackId && tracks.find((t) => t.id === activeTrackId);
+
+  if (!activeTrackId || !hasActiveTrack) {
+    return <div className="text-neutral-300/30 text-[11px]">No tracks to display.</div>;
+  }
+
+  return (
+    <div className="flex flex-col gap-8 px-8">
+      {tracks
+        .filter((track) => track.id === activeTrackId)
+        .map((track) => {
+          const trackIndex = tracks.findIndex((t) => t.id === track.id);
+          return (
+            <TrackItem
+              key={track.id}
+              track={track}
+              trackIndex={trackIndex}
+              predefinedModules={predefinedModules}
+              openRightMenu={openAddModuleModal}
+              onConfirmDelete={openConfirmationModal}
+              inputConfig={inputConfig}
+              config={config}
+              isSequencerPlaying={isSequencerPlaying}
+              handleSequencerToggle={handleSequencerToggle}
+              workspacePath={workspacePath}
+              workspaceModuleFiles={workspaceModuleFiles}
+              workspaceModuleLoadFailures={workspaceModuleLoadFailures}
+              audioCaptureState={audioCaptureState}
+              fileAudioState={fileAudioState}
+            />
+          );
+        })}
+    </div>
+  );
+};
+

@@ -8,6 +8,7 @@ One upload -> one genome.json containing everything the AV engine needs:
   beats      Beat This! (CPJKU, ISMIR 2024) — neural beat + downbeat grid
   waveform   Rust engine — rms/peak/crest envelopes @200fps
   bands      Rust engine — 5-band energy + spectral flux @100fps, centroid
+  chroma     Rust engine — 12 pitch classes + tonal presence @10fps
   onsets     Rust engine — transient events, ms-precise, band-attributed
   wobble     Rust engine — bass LFO rate + depth (2fps)
   tension    Rust engine — slow energy/novelty curve (10fps)
@@ -91,7 +92,7 @@ with image.imports():
     from edm98.inference.pipeline import InferencePipeline
 
 # bump when the pipeline changes so cached genomes regenerate
-ANALYZER_VERSION = "3.0"
+ANALYZER_VERSION = "3.1"
 
 # canonical label order for probability curves (ids from edm98.inference.labels)
 SECTION_LABELS = ["intro", "buildup", "drop", "breakdown", "outro", "silence"]
@@ -252,8 +253,8 @@ def _stems(wav_path: str, device: str) -> dict:
     """6-stem separation + per-stem genome-engine analysis.
 
     Returns {names, frame rates, per-stem {rms@100fps, energy@50fps,
-    centroid@50fps, onsets, wobble}}. Every number here is OBSERVED from
-    the separated layer — this is what lets the player give each layer of
+    centroid@50fps, onsets, wobble, chroma@10fps}}. Every number here is
+    OBSERVED from the separated layer — this lets the player give each layer of
     the track its own body instead of slicing the mix into fixed bands.
     """
     import os
@@ -307,6 +308,7 @@ def _stems(wav_path: str, device: str) -> dict:
                 "centroid": bands["centroid"][::2],
                 "onsets": r["onsets"],
                 "wobble": r["wobble"],
+                "chroma": r["chroma"],
             }
     finally:
         import shutil
@@ -468,6 +470,7 @@ class Analyzer:
             "beats": beats,
             "waveform": rust["envelopes"],
             "bands": rust["bands"],
+            "chroma": rust["chroma"],
             "onsets": rust["onsets"],
             "wobble": wobble,
             "tension": rust["tension"],

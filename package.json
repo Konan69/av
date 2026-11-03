@@ -1,0 +1,36 @@
+{
+  "name": "av-genome-world",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "description": "nw_wrld browser host extended with an analyzed shared 3D musical world",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup": "npm ci --prefix app",
+    "start": "node scripts/start-web.mjs dev",
+    "dev": "node scripts/start-web.mjs dev",
+    "build": "node scripts/start-web.mjs build",
+    "preview": "node scripts/start-web.mjs preview",
+    "nw:setup": "node scripts/setup-nw.mjs",
+    "nw:start": "node scripts/start-nw.mjs",
+    "nw:dev": "node scripts/start-nw.mjs --watch",
+    "nw:build": "tsc -p nw/tsconfig.json --noEmit && node scripts/build-module.mjs",
+    "nw:build:host": "node scripts/setup-nw.mjs --build",
+    "test": "node player/test/run.mjs && node nw/test/run.mjs && node --test app/web/tests/*.test.mjs",
+    "legacy:player": "npm --prefix player run dev",
+    "check": "tsc -p nw/tsconfig.json --noEmit",
+    "test:visual": "node scripts/record-visual.mjs"
+  },
+  "dependencies": {
+    "three": "0.159.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "@types/three": "0.159.0",
+    "esbuild": "0.25.12",
+    "playwright": "^1.61.0",
+    "typescript": "5.9.3"
+  }
+}

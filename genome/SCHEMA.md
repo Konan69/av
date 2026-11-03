@@ -6,7 +6,7 @@ are kept so ambiguity stays visible to the conductor.
 
 ```jsonc
 {
-  "version": 2,
+  "version": 3,
   "track_sha256": "…",
   "source_filename": "track.m4a",
   "duration": 201.85,
@@ -42,6 +42,12 @@ are kept so ambiguity stays visible to the conductor.
     "flux":   { "sub": [], "low": [], "mid": [], "high": [], "air": [] },
     "centroid": []                   // Hz, brightness over time
   },
+  "chroma": {                        // harmony from the mix, 10fps
+    "frame_rate": 10.0,
+    "pitch_classes": ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"],
+    "bins": [],                      // rows of 12 values, own max = 1 (or all zero)
+    "strength": []                   // tonal clarity x audible presence, 0..1
+  },
   "onsets": [                        // transient events, attack-stamped
     { "t": 44.36, "strength": 0.82, "band": "low" }
   ],
@@ -70,7 +76,12 @@ are kept so ambiguity stays visible to the conductor.
         "energy": { "sub": [], … },  // @ energy_frame_rate
         "centroid": [],              // Hz @ energy_frame_rate
         "onsets": [ { "t": 44.36, "strength": 0.82, "band": "low" } ],
-        "wobble": { "frame_rate": 2.0, "rate_hz": [], "depth": [] }
+        "wobble": { "frame_rate": 2.0, "rate_hz": [], "depth": [] },
+        "chroma": {                  // same shape as top-level, from this stem
+          "frame_rate": 10.0,
+          "pitch_classes": ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"],
+          "bins": [], "strength": []
+        }
       }
       // … one entry per stem
     }
@@ -80,8 +91,76 @@ are kept so ambiguity stays visible to the conductor.
 }
 ```
 
+## Chroma contract (analyzer 3.1; genome version remains 3)
+
+`genome.chroma` measures the mix; `genome.stems.per_stem.<name>.chroma`
+measures that isolated stem without downsampling its 10 fps arrays.
+`pitch_classes` fixes the column order, C through B; these are pitch-class
+weights, not chord labels or probabilities (rows need not sum to 1).
+
+The engine uses an independent 16384-sample periodic Hann FFT at 44.1 kHz
+(371.5 ms, 2.692 Hz bins), with a 4410-sample hop. Only bins with centers in
+40–5000 Hz contribute band power or class votes. A bin may vote only when it
+is a local magnitude maximum and exceeds the running magnitude median over
+±20 bins by more than 6 dB (`magnitude > 10^(6/20) * median`). Neighborhoods
+clip at DC/Nyquist; neighbors outside the voting band support this noise-floor
+estimate and interpolation but never contribute votes or band power.
+Peaks must also have coherent-gain-normalized magnitude at least
+`max(frame_peak*10^(-60/20), 1e-6)`, where `frame_peak` is the maximum over
+the full positive-frequency spectrum, including frequencies outside the
+voting band. The absolute magnitude floor is −120 dBFS; this extra gate
+rejects FFT round-off peaks on digitally clean, out-of-band signals.
+
+Each qualifying peak is refined with a parabola through three log-magnitude
+bins. With `a=ln(m[k-1])`, `b=ln(m[k])`, `c=ln(m[k+1])`, the sub-bin offset is
+`clamp(0.5*(a-c)/(a-2*b+c), -0.5, 0.5)`. Map the resulting frequency `f` to
+`round(69 + 12*log2(f/440)) mod 12`, requiring `f` to remain in 40–5000 Hz.
+The peak magnitude, normalized by Hann coherent gain, votes for this single
+class with `cos²(pi*(midi-round(midi)))`: a fixed ±50-cent taper, including
+sub-bass. Interpolation removes the former nearest-bin bass bias.
+
+Divide the raw class sums by their row maximum first, then apply the fixed
+compression `ln(1+10*x)/ln(11)` and round to three decimal places. This keeps
+the row shape independent of playback level; rows need not sum to 1.
+
+`strength` is rounded to three decimal places and equals clarity × presence:
+
+- For clarity only, normalize the raw class sums by their maximum and floor
+  each at `epsilon=1e-3`. Compute `1 - geometric_mean/arithmetical_mean` on
+  these floored values, then divide by the pure-single-class value
+  `1 - 12*epsilon^(11/12)/(1+11*epsilon)` and clamp to 0–1. A missing class
+  now approaches the same finite clarity as a faint class; a pure sine still
+  has clarity 1. No qualifying peaks means clarity zero. This regularization
+  does not floor or otherwise change the displayed chroma row.
+- Band energy is power, including every bin in the band (not just peaks):
+  `2*sum(|X|²)/(NFFT*sum(Hann²))`. This is mean-square amplitude corrected
+  for Hann power gain. Its reference is `max(p95, 1e-7)`, where p95 is the
+  nearest-rank 95th percentile across all frames, including silence. The
+  **reference floor is −70 dBFS power**; a sparse chord survives even if p95
+  is exactly zero. Use `10*log10(energy/reference)`, then smoothstep on
+  `clamp((dB + 40)/34, 0, 1)`: zero at −40 dB relative and one at −6 dB.
+- Multiply this relative presence by absolute audibility: smoothstep on
+  `clamp((rms_dBFS + 70)/25, 0, 1)`, zero at −70 dBFS and one at −45 dBFS.
+  The windowed RMS is `sqrt(sum((sample*Hann)²)/sum(Hann²))`, corrected for
+  Hann power gain; `rms_dBFS = 20*log10(RMS)`. Both ramps are zero for
+  silence. Absolute audibility prevents faint bleed from self-normalizing
+  to full presence. A −40 dBFS **peak** chord can have RMS below −45 dBFS;
+  a steady −40 dBFS **RMS** chord is fully audible by this ramp's definition.
+- Any frame whose rounded strength is zero has an all-zero row, including
+  silence. Otherwise its row maximum is exactly 1.0. JSON numbers may omit
+  trailing zeros; precision is three decimal places, not fixed-width text.
+
 ## Timing notes for the conductor
 
+- **Chroma is center-aligned**: frame `i` is centered at `i/10` seconds,
+  on the same sample clock and zero-based time origin as waveform envelopes
+  and per-stem RMS. Envelopes describe blocks starting at `i/frame_rate`;
+  chroma places its wider window around that timestamp. Zero-pad beyond both
+  file edges; the periodic Hann's peak is exactly at the center sample, so
+  there is no half-sample timing offset. Do not add a half-window (185.8 ms)
+  offset. There are
+  `ceil(sample_count/4410)` rows with matching strength entries; the last
+  center is before the decoded duration, even for files shorter than a window.
 - **Sections → downbeats**: section boundaries land within ~0.2s of a
   downbeat. Snap morph completions to the nearest downbeat ≥ boundary.
 - **Onsets are attack-stamped** (rising edge, not energy peak) — flash

@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/aagentah/nw_wrld.git",
+  "commit": "a660a229d2413c48c3ca03bacf41421ff93e7836",
+  "version": "0.7.0-beta",
+  "license": "GPL-3.0",
+  "patches": [
+    "nw/patches/project-startup.patch",
+    "nw/patches/analyzer-csp.patch",
+    "nw/patches/optional-input.patch"
+  ]
+}
