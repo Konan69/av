@@ -1,0 +1,108 @@
+{
+  "repo": "av",
+  "accent": "#FF7A90",
+  "hero": {
+    "command": "npm start",
+    "output": [
+      {
+        "text": "> av-genome-world@0.3.0 start",
+        "style": "muted"
+      },
+      {
+        "text": "> node scripts/start-web.mjs dev",
+        "style": "muted"
+      },
+      {
+        "text": ""
+      },
+      {
+        "text": "[watch] build finished, watching for changes..."
+      },
+      {
+        "text": ""
+      },
+      {
+        "text": "  VITE v6.4.1  ready in 2279 ms"
+      },
+      {
+        "text": ""
+      },
+      {
+        "text": "  ➜  Local:   http://127.0.0.1:5177/",
+        "style": "accent"
+      }
+    ],
+    "value": "nw_wrld in the browser, with a 3D world that follows the track."
+  },
+  "diagram": {
+    "direction": "TB",
+    "nodes": [
+      {
+        "id": "audio",
+        "label": "Audio file",
+        "sublabel": "file or /api/dj"
+      },
+      {
+        "id": "session",
+        "label": "MusicSession",
+        "sublabel": "sha256"
+      },
+      {
+        "id": "library",
+        "label": "Library",
+        "sublabel": "IndexedDB"
+      },
+      {
+        "id": "analyzer",
+        "label": "Analyzer",
+        "sublabel": "Modal T4 GPU"
+      },
+      {
+        "id": "conductor",
+        "label": "Conductor",
+        "sublabel": "genome v3"
+      },
+      {
+        "id": "world",
+        "label": "GenomeWorld",
+        "sublabel": "Three.js in nw_wrld"
+      }
+    ],
+    "edges": [
+      {
+        "from": "audio",
+        "to": "session"
+      },
+      {
+        "from": "session",
+        "to": "analyzer",
+        "label": "POST /analyze"
+      },
+      {
+        "from": "session",
+        "to": "library",
+        "label": "cached"
+      },
+      {
+        "from": "analyzer",
+        "to": "conductor"
+      },
+      {
+        "from": "library",
+        "to": "conductor"
+      },
+      {
+        "from": "conductor",
+        "to": "world",
+        "label": "signals"
+      }
+    ],
+    "primary": [
+      "audio",
+      "session",
+      "analyzer",
+      "conductor",
+      "world"
+    ]
+  }
+}
