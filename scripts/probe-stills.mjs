@@ -24,7 +24,7 @@ try{
  if(!hit)throw new Error('no GenomeWorld');
  if(await hit.p.locator('#open-projector').count()){const popup=await openProjectorForRecording(hit.p);await popup.waitForLoadState('domcontentloaded');hit=null;for(let i=0;i<120&&!hit;i++){hit=await find();if(!hit)await new Promise(r=>setTimeout(r,250));}}
  const {f}=hit;const errors=[];for(const p of context.pages()){p.on('console',m=>{if(m.type()==='error')errors.push(m.text());});p.on('pageerror',e=>errors.push(e.message));}
- await f.evaluate(()=>window.__genomeWorld.loadTrack({audio:'audio/reference.m4a',genome:'genomes/reference.mixchroma.genome.json'}));
+ await f.evaluate(()=>window.__genomeWorld.loadTrack({audio:'audio/reference.m4a',genome:'genomes/reference.genome.json'}));
  await f.waitForFunction(()=>window.__genomeWorld?.diagnostics.loaded,null,{timeout:60000});
  await f.evaluate(()=>{const m=window.__genomeWorld;m.showControls({visible:false});m.setView();});
  // (the flight has no models to wait for)

@@ -39,8 +39,7 @@ modal deploy modal_app.py                  # deploy HTTP endpoint
 Modal prints the endpoint URL on deploy:
 `https://<workspace>--genome-analyzer-analyzer-analyze-http.modal.run`
 
-Endpoint (deployed 2026-08-29):
-`https://YOUR-WORKSPACE--genome-analyzer-analyzer-web.modal.run` — `POST /analyze`
+Endpoint: `https://<workspace>--genome-analyzer-analyzer-web.modal.run` — `POST /analyze`
 (multipart `file`), `GET /health`. CORS is open so the player calls it directly.
 
 ## Analyze a track
@@ -49,7 +48,7 @@ The player does this for you on drop. From the CLI:
 
 ```bash
 python scripts/analyze.py "/path/to/track.m4a" \
-  --url https://YOUR-WORKSPACE--genome-analyzer-analyzer-web.modal.run/analyze
+  --url https://<workspace>--genome-analyzer-analyzer-web.modal.run/analyze
 ```
 
 ## Roadmap

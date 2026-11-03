@@ -22,7 +22,7 @@ export function moduleBuildOptions(destination = projectDir) {
     banner: { js: moduleBanner },
     define: {
       'import.meta.env.DEV': 'false',
-      'import.meta.env.VITE_GENOME_URL': JSON.stringify('https://YOUR-WORKSPACE--genome-analyzer-analyzer-web.modal.run'),
+      'import.meta.env.VITE_GENOME_URL': JSON.stringify(process.env.VITE_GENOME_URL ?? ''),
     },
     plugins: [{
       name: 'nw-wrld-shared-three',

@@ -31,7 +31,7 @@ Configuration, module edits, and assets live in the ignored `nw/project/` worksp
 - `app/web/`: browser bridge, projector/sandbox transport, and local workspace server.
 - `nw/src/GenomeWorld.ts`: module hosting the shared musical world.
 - `player/src/world/`: shared 3D world implementation used by Genome World.
-- [Analyzer service](genome/README.md), [optional Electron integration](nw/README.md), [original vision](VISION.md).
+- [Analyzer service](genome/README.md), [optional Electron integration](nw/README.md).
 
 The old standalone player remains available through `npm run legacy:player`; it is not the main application.
 
@@ -46,7 +46,7 @@ node scripts/build-module.mjs
 npm run test:visual -- --iteration 02-describe-the-change
 ```
 
-The recorder runs the tests, then records three passages of the local reference reference track with its actual audio: intro, buildup into the first drop, and breakdown into the second drop. Use `--clips name:start:duration,...` for additional cases, including a full-track take: `npm run test:visual -- --iteration full-track --clips full-track:0:201`. Audio and v3 analysis paths can be overridden with `--audio` and `--genome`; they are relative to the workspace assets directory.
+The recorder runs the tests, then records three passages of a local reference track (`audio/reference.m4a` in the workspace assets) with its actual audio: intro, buildup into the first drop, and breakdown into the second drop. Use `--clips name:start:duration,...` for additional cases, including a full-track take: `npm run test:visual -- --iteration full-track --clips full-track:0:201`. Audio and v3 analysis paths can be overridden with `--audio` and `--genome`; they are relative to the workspace assets directory.
 
 Add `--parallax` to append a separate **Scripted 3D parallax test** at track time 60–72 seconds. It sets azimuth to 0°, +12°, −12°, and 0° and camera distance to 0, +1.5, −1.5, and 0 at clip seconds 0, 3, 6, and 9, then restores the prior view. Planned and actual camera event times and complete view settings are saved in the manifest. The camera translates along its world Z axis while changing yaw; the scene stays in world coordinates. Normal musical comparison clips keep their fixed view.
 

@@ -247,7 +247,7 @@ export default class GenomeWorld extends ModuleBase {
       } catch (error) { if (!request.signal.aborted) this.report(error, generation); }
     })();
   }
-  /** A track from the author's DJ library (dj-organizer), streamed through this origin's /api/dj proxy. */
+  /** A track from a local dj-organizer library, streamed through this origin's /api/dj proxy. */
   loadDjTrack({id, name}: {id: number; name?: string}) {
     if (!Number.isInteger(id)) return;
     this.loadUrl({url: `/api/dj/audio/${id}`, name: name || `DJ track ${id}`, djId: id});

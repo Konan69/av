@@ -7,8 +7,7 @@ import { assertGenome, type Genome } from "./genome";
 import { getTrack, putTrack, sha256, type TrackRecord } from "./library";
 
 export const ANALYZER_URL: string =
-	(import.meta.env.VITE_GENOME_URL as string | undefined) ??
-	"https://YOUR-WORKSPACE--genome-analyzer-analyzer-web.modal.run";
+	(import.meta.env.VITE_GENOME_URL as string | undefined) ?? "";
 
 export type Stage =
 	| { kind: "hashing" }
@@ -34,6 +33,7 @@ export async function analyzeBlob(
 		return hit;
 	}
 
+	if (!ANALYZER_URL) throw new Error("no analyzer configured: set VITE_GENOME_URL (see genome/README.md)");
 	const genome = await postAnalyze(blob, name, onStage, signal);
 	signal?.throwIfAborted();
 	if (genome.track_sha256 !== sha)

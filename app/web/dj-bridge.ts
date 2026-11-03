@@ -1,7 +1,7 @@
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import type {Plugin, Connect} from 'vite';
 
-/** Bridge to the author's DJ library (dj-organizer, http://localhost:8765).
+/** Bridge to a local dj-organizer library (http://localhost:8765, override with DJ_ORGANIZER_URL).
  *
  *   GET  /api/dj/tracks               the library, newest first (proxied, trimmed)
  *   GET  /api/dj/audio/:id            the track's audio, streamed through (Range passes through)

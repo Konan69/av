@@ -1,0 +1,39 @@
+av
+Copyright (C) 2026 Konan69
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See LICENSE.
+
+This program is a modified version of nw_wrld:
+
+  nw_wrld, Copyright (C) 2025 nw_wrld Contributors, GPL-3.0
+  https://github.com/aagentah/nw_wrld
+  revision a660a229d2413c48c3ca03bacf41421ff93e7836 (0.7.0-beta)
+
+The complete upstream tree is vendored in app/ with its license in
+app/LICENSE. Changes made to it (2026-08 to 2026-11):
+
+  Modified upstream files:
+    app/package.json, app/package-lock.json
+    app/src/projector/Projector.ts
+    app/src/projector/internal/bridge.ts
+    app/src/projector/moduleSandboxEntry.ts
+
+  Added (browser host replacing Electron IPC, BrowserView and protocol
+  handlers with browser messaging, an iframe and a local workspace server):
+    app/UPSTREAM.md, app/vite.config.ts
+    app/dashboard.html, app/index.html, app/projector.html,
+    app/sandbox.html, app/visualizer.html
+    app/web/
+
+  Patches applied to a separate upstream checkout by the optional desktop
+  route (scripts/setup-nw.mjs): nw/patches/*.patch
+
+Everything outside app/ (genome/, nw/, player/, scripts/) is original to av
+and is distributed under the same GPL-3.0 terms.
+
+Third-party models used by the analyzer (genome/) are not included in this
+repository. They are downloaded at deploy time and carry their own licenses;
+see genome/MODELS.md.

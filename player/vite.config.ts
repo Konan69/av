@@ -1,11 +1,12 @@
 import { createReadStream, statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 /** Your music folder, served to the player so you never drag a file again. */
-const TRACKS_DIR = process.env.TRACKS_DIR ?? "~/Music/Tracks";
+const TRACKS_DIR = process.env.TRACKS_DIR ?? join(homedir(), "Music", "Tracks");
 const AUDIO = /\.(m4a|mp3|wav|flac|ogg|aac|aiff?)$/i;
 
 function tracksFolder(): Plugin {

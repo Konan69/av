@@ -1,7 +1,7 @@
 /** TRACE — the track's anatomy, drawn. One oscilloscope lane per discovered
  *  voice, scrolling through a window of its OWN separated stem, with a tick at
- *  every onset it fired. This is the scene that literally shows what the author
- *  hears: the layers, side by side, as measurement. */
+ *  every onset it fired. This is the scene that literally shows what a
+ *  listener hears: the layers, side by side, as measurement. */
 import * as THREE from "three";
 import type { Conductor } from "../conductor";
 import type { Ctx, Scene } from "./types";

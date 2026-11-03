@@ -1,7 +1,7 @@
 /**
  * A SCENE is one strong idea, not a pile of elements.
  *
- * Every reference the author sent is a scene system: nw_wrld sequences modules,
+ * Every reference we studied is a scene system: nw_wrld sequences modules,
  * vizz.fm lists Mesh Grid / Wavy Form / Equalizer Rings, fosfora ships effect
  * families, dmnvis picks a scene per track. Our previous build was ONE
  * composite world with five things fighting inside it — which is exactly why

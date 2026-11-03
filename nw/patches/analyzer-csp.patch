@@ -7,7 +7,7 @@ index c098a47..f9ebee1 100644
      <meta
        http-equiv="Content-Security-Policy"
 -      content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'self' blob: nw-assets: data:; script-src 'self' 'unsafe-eval' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob: nw-assets:; media-src 'self' data: blob: nw-assets:; font-src 'self' data: blob: nw-assets:;"
-+      content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'self' blob: nw-assets: data: https://YOUR-WORKSPACE--genome-analyzer-analyzer-web.modal.run; script-src 'self' 'unsafe-eval' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob: nw-assets:; media-src 'self' data: blob: nw-assets:; font-src 'self' data: blob: nw-assets:;"
++      content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'self' blob: nw-assets: data: __GENOME_ORIGIN__; script-src 'self' 'unsafe-eval' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob: nw-assets:; media-src 'self' data: blob: nw-assets:; font-src 'self' data: blob: nw-assets:;"
      />
      <title>nw_wrld module sandbox</title>
    </head>
@@ -20,7 +20,7 @@ index 51e38e1..6f09728 100644
      <meta
        http-equiv="Content-Security-Policy"
 -      content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'self' blob: nw-assets: data:; script-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob: nw-assets:; media-src 'self' data: blob: nw-assets:; font-src 'self' data: blob: nw-assets:;"
-+      content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'self' blob: nw-assets: data: https://YOUR-WORKSPACE--genome-analyzer-analyzer-web.modal.run; script-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob: nw-assets:; media-src 'self' data: blob: nw-assets:; font-src 'self' data: blob: nw-assets:;"
++      content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'self' blob: nw-assets: data: __GENOME_ORIGIN__; script-src 'self' blob:; style-src 'unsafe-inline'; img-src 'self' data: blob: nw-assets:; media-src 'self' data: blob: nw-assets:; font-src 'self' data: blob: nw-assets:;"
      />
      <title>nw_wrld module sandbox</title>
    </head>

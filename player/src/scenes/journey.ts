@@ -17,7 +17,7 @@
  *     because that is a property of the region you are flying through, the
  *     change arrives as travel rather than as an edit.
  *
- * Each gate is a K-fold mirrored ring — the kaleidoscope the author liked, but as
+ * Each gate is a K-fold mirrored ring — the kaleidoscope that worked, but as
  * something you pass through rather than something painted on the screen.
  */
 import * as THREE from "three";

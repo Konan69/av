@@ -44,6 +44,6 @@ test('upstream pin and sandbox patch restrict analyzer permission to its origin'
   assert.match(upstream.commit, /^[a-f0-9]{40}$/);
   const patch = await readFile(new URL('../patches/analyzer-csp.patch', import.meta.url), 'utf8');
   const additions = patch.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++')).join('\n');
-  assert.match(additions, /https:\/\/YOUR-WORKSPACE--genome-analyzer-analyzer-web\.modal\.run/);
+  assert.match(additions, /connect-src[^;]* __GENOME_ORIGIN__;/);
   assert.doesNotMatch(additions, /connect-src[^;]*(?:\*|https:\s)/);
 });

@@ -13,12 +13,16 @@ if (!existsSync(path.join(hostDir, '.git'))) {
 }
 const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: hostDir, encoding: 'utf8' }).trim();
 if (head !== upstream.commit) throw new Error(`Host is at ${head}; expected ${upstream.commit}. Existing checkout left intact.`);
+// The sandbox CSP may reach only the configured analyzer origin.
+const genomeOrigin = process.env.VITE_GENOME_URL ? ` ${new URL(process.env.VITE_GENOME_URL).origin}` : '';
+const patchText = async patch => (await readFile(path.join(root, patch), 'utf8')).replaceAll(' __GENOME_ORIGIN__', genomeOrigin);
+const apply = (args, input, stdio = 'inherit') => execFileSync('git', ['apply', ...args, '-'], { cwd: hostDir, input, stdio: ['pipe', stdio, stdio] });
 for (const patch of upstream.patches) {
-  const absolute = path.join(root, patch);
-  try { execFileSync('git', ['apply', '--reverse', '--check', absolute], { cwd: hostDir, stdio: 'ignore' }); }
+  const text = await patchText(patch);
+  try { apply(['--reverse', '--check'], text, 'ignore'); }
   catch {
-    await run('git', ['apply', '--check', absolute], { cwd: hostDir });
-    await run('git', ['apply', absolute], { cwd: hostDir });
+    apply(['--check'], text);
+    apply([], text);
   }
 }
 const installStamp = path.join(hostDir, '.av-install-commit');
@@ -30,7 +34,7 @@ if (installedCommit !== upstream.commit || !existsSync(path.join(hostDir, 'node_
 await scaffoldProject();
 await run(npm, ['run', 'build:runtime'], { cwd: hostDir });
 const hash = createHash('sha256').update(upstream.commit);
-for (const patch of upstream.patches) hash.update(await readFile(path.join(root, patch)));
+for (const patch of upstream.patches) hash.update(await patchText(patch));
 const buildFingerprint = hash.digest('hex');
 const buildStamp = path.join(hostDir, '.av-renderer-inputs');
 const lastBuild = existsSync(buildStamp) ? (await readFile(buildStamp, 'utf8')).trim() : '';
