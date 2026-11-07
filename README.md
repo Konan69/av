@@ -1,6 +1,6 @@
 # av
 
-*Feed it a song and it grows a world. Kicks become tremors, drops become weather.*
+Visuals that react to the track you are playing.
 
 av runs the [nw_wrld](https://github.com/aagentah/nw_wrld) audiovisual dashboard and projector in a browser and adds Genome World, a 3D scene driven by an offline analysis of the track that is playing.
 
