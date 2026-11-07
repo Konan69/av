@@ -1,5 +1,7 @@
 # av
 
+*Feed it a song and it grows a world. Kicks become tremors, drops become weather.*
+
 av runs the [nw_wrld](https://github.com/aagentah/nw_wrld) audiovisual dashboard and projector in a browser and adds Genome World, a 3D scene driven by an offline analysis of the track that is playing.
 
 ![A terminal runs npm start. The Genome World module builds, Vite reports ready, and the app serves at http://127.0.0.1:5177/.](docs/media/hero.gif)
